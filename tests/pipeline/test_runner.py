@@ -1,6 +1,7 @@
 from dataclasses import asdict, replace
 import json
 import os
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -735,31 +736,97 @@ def test_deployment_inputs_reject_missing_required_validation_split(filesystem_r
         source.deployment_input_files(_deployment_configs())
 
 
-def test_deployment_inputs_exclude_session_caches_that_do_not_define_full_target_union(filesystem_runner_source):
+def test_deployment_input_state_includes_existing_validation_sessions(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+
+    state = source.deployment_input_state(_deployment_configs())
+    by_path = {item["path"]: item for item in state}
+    session = by_path[str((source.session_dir / "s3.npz").resolve())]
+
+    assert session == {
+        "path": str((source.session_dir / "s3.npz").resolve()),
+        "size": (source.session_dir / "s3.npz").stat().st_size,
+        "mtime_ns": (source.session_dir / "s3.npz").stat().st_mtime_ns,
+        "sha256": hashlib.sha256((source.session_dir / "s3.npz").read_bytes()).hexdigest(),
+    }
+
+
+def test_deployment_input_state_records_missing_validation_sessions_without_refusing_promotion(filesystem_runner_source):
     source = _deployment_input_source(filesystem_runner_source)
     manifest = source.root / "cache" / "splits" / "fold2.json"
     manifest.write_text('{"train_sessions": ["s1"], "val_sessions": ["s3", "missing"]}', encoding="utf-8")
 
-    inputs = source.deployment_input_files(_deployment_configs())
+    state = source.deployment_input_state(_deployment_configs())
 
-    assert source.session_dir / "s3.npz" not in inputs
-    assert source.session_dir / "missing.npz" not in inputs
+    assert {
+        "path": str((source.session_dir / "missing.npz").resolve()),
+        "missing": True,
+    } in state
 
 
-def test_deployment_inputs_contain_only_existing_held_out_artifacts(filesystem_runner_source):
+def test_deployment_input_state_includes_session_read_from_validation_cache(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+    macro_only = source.session_dir / "macro-only.npz"
+    macro_only.write_bytes(b"session read through validation cache")
+    np.savez(
+        source.slide_dir / "fold2_val.npz",
+        feat=np.zeros((1, 62), np.float32),
+        label=np.zeros(1, np.int8),
+        wid=np.array([json.dumps(("macro-only", 0, 240000))]),
+    )
+
+    state = source.deployment_input_state(_deployment_configs())
+
+    assert any(item["path"] == str(macro_only.resolve()) and "sha256" in item for item in state)
+
+
+def test_deployment_input_state_changes_when_missing_validation_session_appears(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+    manifest = source.root / "cache" / "splits" / "fold2.json"
+    manifest.write_text('{"train_sessions": ["s1"], "val_sessions": ["s3", "missing"]}', encoding="utf-8")
+    configs = _deployment_configs()
+    before = source.deployment_input_state(configs)
+    missing = source.session_dir / "missing.npz"
+    missing.write_bytes(b"a newly available session")
+
+    after = source.deployment_input_state(configs)
+
+    assert before != after
+    assert {"path": str(missing.resolve()), "missing": True} in before
+    assert any(item["path"] == str(missing.resolve()) and "sha256" in item for item in after)
+
+
+def test_deployment_input_state_hashes_content_not_just_file_metadata(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+    configs = _deployment_configs()
+    index = source.root / "index.csv"
+    before = source.deployment_input_state(configs)
+    original = index.read_bytes()
+    replacement = (b"X" if original[:1] != b"X" else b"Y") + original[1:]
+    index.write_bytes(replacement)
+
+    after = source.deployment_input_state(configs)
+
+    before_index = next(item for item in before if item["path"] == str(index.resolve()))
+    after_index = next(item for item in after if item["path"] == str(index.resolve()))
+    assert before_index["size"] == after_index["size"]
+    assert before_index["sha256"] != after_index["sha256"]
+
+
+def test_deployment_input_state_requires_validation_artifacts_but_not_sessions(filesystem_runner_source):
     from src.data import manifests
 
     source = _deployment_input_source(filesystem_runner_source)
 
-    inputs = source.deployment_input_files(_deployment_configs())
+    state = source.deployment_input_state(_deployment_configs())
 
-    assert all(path.exists() for path in inputs)
-    assert manifests.INDEX_CSV in inputs
-    assert manifests.MEALS_CSV in inputs
-    assert {source.slide_dir / f"fold{fold}_val.npz" for fold in range(5)} <= set(inputs)
-    assert {source.micro_dir / f"fold{fold}_val.npz" for fold in range(5)} <= set(inputs)
-    assert {source.root / "cache" / "splits" / f"fold{fold}.json" for fold in range(5)} <= set(inputs)
-    assert not any("train" in path.name for path in inputs)
+    paths = {item["path"] for item in state}
+    assert str(manifests.INDEX_CSV.resolve()) in paths
+    assert str(manifests.MEALS_CSV.resolve()) in paths
+    assert {str((source.slide_dir / f"fold{fold}_val.npz").resolve()) for fold in range(5)} <= paths
+    assert {str((source.micro_dir / f"fold{fold}_val.npz").resolve()) for fold in range(5)} <= paths
+    assert {str((source.root / "cache" / "splits" / f"fold{fold}.json").resolve()) for fold in range(5)} <= paths
+    assert not any("train" in Path(path).name for path in paths)
 
 
 def historical_result_payload():

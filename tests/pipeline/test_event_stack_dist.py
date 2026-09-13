@@ -26,6 +26,15 @@ from scripts.predict_event_stack import (
 from src.pipeline.artifacts import EventStackBundle, promote_summary, write_event_stack_bundle
 
 
+def _fixture_fingerprint() -> dict[str, object]:
+    return {
+        "path": str((Path.cwd() / "fixture.npz").resolve()),
+        "size": 1,
+        "mtime_ns": 1,
+        "sha256": hashlib.sha256(b"fixture").hexdigest(),
+    }
+
+
 def _schema_hash(schema: dict[str, int]) -> str:
     payload = json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -53,7 +62,7 @@ def fitted_deployment_bundle() -> EventStackBundle:
         run_config={"candidate_control_enabled": True},
         feature_schema={"macro": 1, "micro": 1, "verifier": 1},
         metrics={"n_tp": 1, "n_true": 1, "n_pred": 1, "f1": 1.0},
-        source_fingerprints=({"path": "fixture.npz", "size": 1, "mtime_ns": 1},),
+        source_fingerprints=(_fixture_fingerprint(),),
         role="deployment",
     )
 
@@ -77,7 +86,7 @@ def fitted_scored_deployment_bundle() -> EventStackBundle:
         run_config={"candidate_control_enabled": True},
         feature_schema={"macro": 1, "micro": 1, "verifier": 1},
         metrics={"n_tp": 1, "n_true": 1, "n_pred": 1, "f1": 1.0},
-        source_fingerprints=({"path": "fixture.npz", "size": 1, "mtime_ns": 1},),
+        source_fingerprints=(_fixture_fingerprint(),),
         role="deployment",
     )
 

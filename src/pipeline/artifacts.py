@@ -36,6 +36,38 @@ _PROMOTION_SUMMARY_FILENAME = "promotion_summary.json"
 _PROMOTION_ATTESTATION_FILENAME = "promotion_attestation.json"
 
 
+def _is_canonical_absolute_path(value: object) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    path = Path(value)
+    return path.is_absolute() and str(path.resolve(strict=False)) == value
+
+
+def _is_source_fingerprint(item: object) -> bool:
+    """Accept exactly one canonical present or absent input-state record."""
+
+    if not isinstance(item, dict) or not _is_canonical_absolute_path(item.get("path")):
+        return False
+    if set(item) == {"path", "missing"}:
+        return item["missing"] is True
+    if set(item) != {"path", "size", "mtime_ns", "sha256"}:
+        return False
+    size = item["size"]
+    mtime_ns = item["mtime_ns"]
+    digest = item["sha256"]
+    return (
+        isinstance(size, int)
+        and not isinstance(size, bool)
+        and size >= 0
+        and isinstance(mtime_ns, int)
+        and not isinstance(mtime_ns, bool)
+        and mtime_ns >= 0
+        and isinstance(digest, str)
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
+    )
+
+
 class PromotionContractError(RuntimeError):
     """Promotion cannot proceed without a qualifying, explicit training contract."""
 
@@ -68,6 +100,12 @@ class EventStackBundle:
             for name, width in self.feature_schema.items()
         ):
             raise ValueError("feature_schema must map names to positive integer widths")
+        fingerprints = self.source_fingerprints
+        if not fingerprints or not all(_is_source_fingerprint(item) for item in fingerprints):
+            raise ValueError("source_fingerprints must contain canonical present or missing state records")
+        paths = [str(item["path"]) for item in fingerprints]
+        if len(paths) != len(set(paths)):
+            raise ValueError("source_fingerprints must not repeat paths")
 
 
 class PromotionTrainer(Protocol):
@@ -331,10 +369,12 @@ def verify_bundle_manifest(
     if not isinstance(manifest.get("metrics"), dict):
         problems.append("manifest metrics must be an object")
     fingerprints = manifest.get("source_fingerprints")
-    if not isinstance(fingerprints, list) or not all(
-        isinstance(item, dict) for item in fingerprints
+    if not isinstance(fingerprints, list) or not fingerprints or not all(
+        _is_source_fingerprint(item) for item in fingerprints
     ):
-        problems.append("manifest source_fingerprints must be an array of objects")
+        problems.append("manifest source_fingerprints must be canonical present or missing state records")
+    elif len({str(item["path"]) for item in fingerprints}) != len(fingerprints):
+        problems.append("manifest source_fingerprints must not repeat paths")
     return tuple(problems)
 
 

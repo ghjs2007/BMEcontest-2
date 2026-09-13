@@ -261,10 +261,13 @@ SHA-256。打包器只接受这一完整结构，且只原子替换仓库 `dist/
 bundle 的 63/47/56 schema 来自实际拟合 estimator 的 `n_features_in_`。任一不一致都会在
 创建 `models/` 或 `dist/` 前拒绝晋级。
 
-deployment bundle 的输入指纹只覆盖定义 full-target 并集的五个 macro validation cache、
-五个 micro validation cache、五份 fold manifest 与 index/meals manifest；任何一个这些必需
-文件缺失都会拒绝晋级。session cache 不属于这个并集定义，因而不会因存在而被加入指纹，也不会
-因缺失阻塞晋级。所有 train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
+deployment bundle 的输入状态覆盖定义 full-target 并集的五个 macro validation cache、五个
+micro validation cache、五份 fold manifest、index/meals manifest，以及每份 validation cache
+实际引用或相应 split manifest 列出的 validation session cache。必需的 cache/manifest/index/meals
+缺失会拒绝晋级；会话 cache 缺失则以稳定的 `{path, missing: true}` 标记写入 provenance，符合
+`_eligible_truths` 对不可用会话的合法跳过规则。已存在文件记录 canonical absolute path、size、
+mtime_ns 和 SHA-256，故内容变更或缺失会话随后出现都会改变部署 manifest。所有
+train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
 
 部署特征输入必须同时携带稳定 `subject_id` 与会话 `sid`：前者用于冻结的 candidate admission
 预算和 event budget，后者只用于同会话 NMS 与输出事件几何；同一 payload 中的 `sid` 必须全局唯一，

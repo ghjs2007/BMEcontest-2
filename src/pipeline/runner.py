@@ -1571,6 +1571,66 @@ class FilesystemDataSource:
         return tuple(sorted(set(required), key=lambda path: str(path)))
 
     @staticmethod
+    def _deployment_file_state(path: Path) -> dict[str, object]:
+        """Return a canonical, content-sensitive source-state record."""
+
+        canonical = Path(path).resolve()
+        if not canonical.exists():
+            return {"path": str(canonical), "missing": True}
+        digest = hashlib.sha256()
+        with canonical.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        stat = canonical.stat()
+        return {
+            "path": str(canonical),
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": digest.hexdigest(),
+        }
+
+    def deployment_input_state(
+        self, configs: Sequence[RunConfig]
+    ) -> tuple[dict[str, object], ...]:
+        """Fingerprint every artifact read while fitting the deployment union.
+
+        Required validation caches and manifests must exist, but session caches
+        are intentionally represented even when absent: ``_eligible_truths``
+        legally skips them.  This records both that decision and any later
+        change in content or availability without passing missing paths to the
+        outer-fold cache-key code path.
+        """
+
+        required = self.deployment_input_files(configs)
+        session_paths: list[Path] = []
+        for config in configs:
+            manifest_path = self.root / "cache" / "splits" / f"fold{config.outer_fold}.json"
+            with manifest_path.open(encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            validation_sessions = manifest["val_sessions"]
+            if not isinstance(validation_sessions, list):
+                raise ValueError(f"deployment split manifest has invalid val_sessions: {manifest_path}")
+            # ``_eligible_truths`` uses the validation cache's window IDs,
+            # rather than trusting the manifest alone.  Bind that exact read
+            # set too, so a stale or inconsistent cache cannot hide a session
+            # state change from the deployment provenance.
+            validation_sessions = [
+                *validation_sessions,
+                *(window.sid for window in self._load_batch(
+                    self._split_path(config.outer_fold, "val")
+                ).windows),
+            ]
+            session_paths.extend(
+                self.session_dir / f"{str(session_id)}.npz"
+                for session_id in validation_sessions
+            )
+        paths = {Path(path).resolve() for path in (*required, *session_paths)}
+        return tuple(
+            self._deployment_file_state(path)
+            for path in sorted(paths, key=lambda item: str(item))
+        )
+
+    @staticmethod
     def _load_batch(path: Path) -> WindowBatch:
         with np.load(path, allow_pickle=True) as data:
             features = np.asarray(data["feat"]).copy()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+import hashlib
 import json
 import math
 import sys
@@ -177,7 +178,16 @@ def _fingerprints(paths: Sequence[Path]) -> tuple[dict[str, object], ...]:
     result = []
     for path in sorted({Path(item).resolve() for item in paths}, key=lambda item: str(item)):
         stat = path.stat()
-        result.append({"path": str(path), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        result.append({
+            "path": str(path),
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": digest.hexdigest(),
+        })
     return tuple(result)
 
 
@@ -326,7 +336,7 @@ def registered_filesystem_trainer(summary: Mapping[str, object]) -> Mapping[str,
         },
         feature_schema=_validated_feature_schema(fit),
         metrics=aggregate_metrics,
-        source_fingerprints=_fingerprints(source.deployment_input_files(configs)),
+        source_fingerprints=source.deployment_input_state(configs),
         role="deployment",
     )
     return bundles

@@ -175,7 +175,18 @@ def test_registered_trainer_rejects_summary_or_evidence_tampering_before_any_wri
     assert not output_root.exists()
 
 
-def fitted_tiny_bundle(role: str = "outer-fold-evidence") -> EventStackBundle:
+def _fixture_fingerprint() -> dict[str, object]:
+    return {
+        "path": str((Path.cwd() / "fixture.npz").resolve()),
+        "size": 1,
+        "mtime_ns": 1,
+        "sha256": hashlib.sha256(b"fixture").hexdigest(),
+    }
+
+
+def fitted_tiny_bundle(
+    role: str = "outer-fold-evidence", *, source_fingerprints=None
+) -> EventStackBundle:
     model = DummyClassifier(strategy="prior").fit(
         np.array([[0.0], [1.0]]), np.array([0, 1])
     )
@@ -188,7 +199,7 @@ def fitted_tiny_bundle(role: str = "outer-fold-evidence") -> EventStackBundle:
         run_config={"outer_fold": 0, "candidate_control_enabled": True},
         feature_schema={"macro": 63, "micro": 47, "verifier": 56},
         metrics={"n_tp": 1, "n_true": 1, "n_pred": 1, "f1": 1.0},
-        source_fingerprints=({"path": "fixture.npz", "size": 1, "mtime_ns": 1},),
+        source_fingerprints=source_fingerprints or (_fixture_fingerprint(),),
         role=role,
     )
 
@@ -207,6 +218,52 @@ def test_bundle_round_trip_preserves_predictions_and_manifest(tmp_path: Path):
             bundle.models[name].predict_proba(probe),
         )
     assert verify_bundle_manifest(destination) == ()
+
+
+def test_bundle_round_trip_retains_missing_deployment_session_marker(tmp_path: Path):
+    missing = {
+        "path": str((tmp_path / "cache" / "sessions" / "absent.npz").resolve()),
+        "missing": True,
+    }
+    bundle = fitted_tiny_bundle(source_fingerprints=(_fixture_fingerprint(), missing))
+    destination = tmp_path / "models" / "event_stack" / "run-key"
+
+    write_event_stack_bundle(destination, bundle, event_stack_root=destination.parent)
+
+    assert missing in load_event_stack_bundle(destination).source_fingerprints
+
+
+def test_promoted_deployment_bundle_retains_missing_session_marker(tmp_path: Path):
+    missing = {
+        "path": str((tmp_path / "cache" / "sessions" / "absent.npz").resolve()),
+        "missing": True,
+    }
+
+    def trainer(_summary):
+        return {
+            **{f"outer-fold-{fold}": fitted_tiny_bundle() for fold in range(5)},
+            "deployment": fitted_tiny_bundle(
+                role="deployment", source_fingerprints=(_fixture_fingerprint(), missing)
+            ),
+        }
+
+    written = promote_summary(_qualified_summary(tmp_path), output_root=tmp_path / "models", trainer=trainer)
+    deployment = next(path for path in written if path.name == "deployment")
+
+    assert missing in load_event_stack_bundle(deployment, expected_role="deployment").source_fingerprints
+
+
+@pytest.mark.parametrize(
+    "fingerprint",
+    (
+        {"path": str((Path.cwd() / "fixture.npz").resolve()), "missing": True, "size": 1},
+        {"path": "fixture.npz", "missing": True},
+        {"path": str((Path.cwd() / "fixture.npz").resolve()), "size": 1, "mtime_ns": 1},
+    ),
+)
+def test_bundle_rejects_noncanonical_or_ambiguous_source_fingerprint(fingerprint):
+    with pytest.raises(ValueError, match="source_fingerprints"):
+        fitted_tiny_bundle(source_fingerprints=(fingerprint,))
 
 
 def test_tampered_model_is_rejected(tmp_path: Path):
