@@ -1,0 +1,2 @@
+models/event_stack/** -text
+dist/event_stack/** -text
