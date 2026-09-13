@@ -308,21 +308,41 @@ def _event_key(event: EventRef) -> tuple[str, int, int]:
     return event.sid, event.start_ms, event.end_ms
 
 
-def _validate_finite_array(values: np.ndarray, name: str) -> None:
+def _validate_imputable_features(
+    values: np.ndarray, name: str, *, allow_all_missing_columns: bool = False
+) -> None:
+    """Accept NaN only where the registered ``SimpleImputer`` can consume it."""
+
     try:
-        finite = np.isfinite(np.asarray(values, dtype=np.float64)).all()
+        numeric = np.asarray(values, dtype=np.float64)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must contain finite numeric values") from exc
-    if not finite:
-        raise ValueError(f"{name} must contain only finite values")
+        raise ValueError(f"{name} must contain numeric values or NaN") from exc
+    if np.isinf(numeric).any():
+        raise ValueError(f"{name} must not contain +/-Inf values")
+    if not allow_all_missing_columns and np.isnan(numeric).all(axis=0).any():
+        raise ValueError(
+            f"{name} must not contain all-missing columns; the registered "
+            "SimpleImputer would drop them"
+        )
+
+
+def _validate_tristate_labels(values: np.ndarray, name: str) -> None:
+    """Enforce the documented -1/0/1 label contract before filtering -1 rows."""
+
+    try:
+        numeric = np.asarray(values, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must contain finite tri-state labels") from exc
+    if not np.isfinite(numeric).all() or not np.isin(numeric, (-1.0, 0.0, 1.0)).all():
+        raise ValueError(f"{name} must contain finite tri-state labels (-1, 0, 1)")
 
 
 def _validate_full_target_batch(batch: WindowBatch, name: str, width: int) -> set[str]:
     _validate_batch(batch, name)
     if batch.features.shape[1] != width:
         raise ValueError(f"{name}.features must have {width} columns")
-    _validate_finite_array(batch.features, f"{name}.features")
-    _validate_finite_array(batch.labels, f"{name}.labels")
+    _validate_imputable_features(batch.features, f"{name}.features")
+    _validate_tristate_labels(batch.labels, f"{name}.labels")
     if any(not isinstance(window, EventRef) or window.end_ms <= window.start_ms for window in batch.windows):
         raise ValueError(f"{name}.windows must contain valid EventRef intervals")
     return {window.sid for window in batch.windows}
@@ -805,6 +825,8 @@ def _execute_outer_dataset(
         ("validation", data_source.validation),
     ):
         _validate_batch(batch, name)
+        _validate_imputable_features(batch.features, f"{name}.features")
+        _validate_tristate_labels(batch.labels, f"{name}.labels")
 
     window_groups = _groups_for(
         data_source.window_train.windows, data_source.subject_by_session
@@ -835,6 +857,8 @@ def _execute_outer_dataset(
             _validate_batch(batch, name)
             if batch.features.shape[1] != 47:
                 raise ValueError(f"{name}.features must have 47 columns")
+            _validate_imputable_features(batch.features, f"{name}.features")
+            _validate_tristate_labels(batch.labels, f"{name}.labels")
         micro_train = data_source.micro_window_train
         micro_candidates_batch = data_source.micro_candidate_train
         micro_validation = data_source.micro_validation
@@ -919,6 +943,11 @@ def _execute_outer_dataset(
         )
     if not train_candidates:
         raise ValueError("inner window OOF produced no verifier candidates")
+    _validate_imputable_features(
+        train_candidate_features,
+        "verifier training features",
+        allow_all_missing_columns=not config.candidate_control_enabled,
+    )
     train_candidate_labels = _candidate_labels(
         train_candidates, data_source.train_truths
     )
@@ -1446,6 +1475,10 @@ def fit_full_target_deployment(
     candidate_features = multiscale_verifier_features(candidates, macro_windows, micro_windows)
     if candidate_features.shape[1] != 56:
         raise ValueError("full-target deployment verifier features must have 56 columns")
+    _validate_imputable_features(
+        candidate_features,
+        "full-target deployment verifier features",
+    )
     candidate_labels = _candidate_labels(candidates, data.train_truths)
     _validate_binary(candidate_labels, "deployment verifier training")
     final_fit = _fit_final_models(

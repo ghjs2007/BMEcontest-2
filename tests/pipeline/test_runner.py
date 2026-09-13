@@ -168,8 +168,8 @@ def test_full_target_dataset_rejects_reused_held_out_subject_or_truth_count():
         )
 
 
-def test_full_target_dataset_rejects_wrong_width_nonfinite_and_misaligned_micro_rows():
-    """Promotion may concatenate only validated 62/47-column held-out data."""
+def test_full_target_dataset_allows_imputable_nan_features():
+    """Promotion accepts missing values handled by the registered imputers."""
     from src.pipeline.runner import build_full_target_dataset
 
     base = synthetic_runner_dataset(subjects=6, windows_per_subject=20)
@@ -197,18 +197,46 @@ def test_full_target_dataset_rejects_wrong_width_nonfinite_and_misaligned_micro_
         def load_outer_fold(self, _config):
             return self.dataset
 
+    missing_features = macro.features.copy()
+    missing_features[0, 0] = np.nan
+
+    full = build_full_target_dataset(
+        (RunConfig(outer_fold=0),),
+        Source(replace(valid, validation=replace(macro, features=missing_features))),
+        expected_truth_count=1,
+    )
+
+    assert np.isnan(full.validation.features[0, 0])
+
+
+def test_full_target_dataset_keeps_width_and_row_alignment_guards():
+    """Relaxing missingness must not relax promotion schema alignment."""
+    from src.pipeline.runner import build_full_target_dataset
+
+    base = synthetic_runner_dataset(subjects=6, windows_per_subject=20)
+    macro = WindowBatch(
+        np.pad(base.validation.features, ((0, 0), (0, 60))),
+        base.validation.labels,
+        base.validation.windows,
+    )
+    micro = WindowBatch(
+        np.zeros((len(macro.labels), 47), dtype=np.float32),
+        macro.labels,
+        macro.windows,
+    )
+    valid = replace(base, validation=macro, micro_validation=micro)
+
+    class Source:
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def load_outer_fold(self, _config):
+            return self.dataset
+
     with pytest.raises(ValueError, match="62"):
         build_full_target_dataset(
             (RunConfig(outer_fold=0),),
             Source(replace(valid, validation=replace(macro, features=macro.features[:, :-1]))),
-            expected_truth_count=1,
-        )
-    bad_features = macro.features.copy()
-    bad_features[0, 0] = np.nan
-    with pytest.raises(ValueError, match="finite"):
-        build_full_target_dataset(
-            (RunConfig(outer_fold=0),),
-            Source(replace(valid, validation=replace(macro, features=bad_features))),
             expected_truth_count=1,
         )
     with pytest.raises(ValueError, match="micro_validation arrays must have equal row counts"):
@@ -217,6 +245,110 @@ def test_full_target_dataset_rejects_wrong_width_nonfinite_and_misaligned_micro_
             Source(replace(valid, micro_validation=replace(micro, labels=micro.labels[:-1]))),
             expected_truth_count=1,
         )
+
+
+@pytest.mark.parametrize(
+    "field", ("positive_infinity", "negative_infinity", "all_missing_column", "invalid_label", "nan_label")
+)
+def test_full_target_dataset_rejects_non_imputable_features_and_invalid_labels(field):
+    """Promotion keeps the documented tri-state labels while rejecting corrupt input."""
+    from src.pipeline.runner import build_full_target_dataset
+
+    base = synthetic_runner_dataset(subjects=6, windows_per_subject=20)
+    macro = WindowBatch(
+        np.pad(base.validation.features, ((0, 0), (0, 60))),
+        base.validation.labels,
+        base.validation.windows,
+    )
+    valid = replace(
+        base,
+        validation=macro,
+        validation_truth_slices={"synthetic_meals": base.validation_truths},
+    )
+
+    class Source:
+        def load_outer_fold(self, _config):
+            return dataset
+
+    if field == "positive_infinity":
+        features = macro.features.copy()
+        features[0, 0] = np.inf
+        dataset = replace(valid, validation=replace(macro, features=features))
+    elif field == "negative_infinity":
+        features = macro.features.copy()
+        features[0, 0] = -np.inf
+        dataset = replace(valid, validation=replace(macro, features=features))
+    elif field == "all_missing_column":
+        features = macro.features.copy()
+        features[:, 0] = np.nan
+        dataset = replace(valid, validation=replace(macro, features=features))
+    else:
+        labels = macro.labels.astype(np.float64, copy=True)
+        labels[0] = 2.0 if field == "invalid_label" else np.nan
+        dataset = replace(valid, validation=replace(macro, labels=labels))
+
+    with pytest.raises(ValueError, match=r"(\+/-Inf|all-missing columns|tri-state labels)"):
+        build_full_target_dataset(
+            (RunConfig(outer_fold=0),), Source(), expected_truth_count=1
+        )
+
+
+@pytest.mark.parametrize("field", ("infinite_feature", "invalid_label"))
+def test_outer_runner_enforces_the_same_imputer_input_contract(field):
+    """Evaluation fails at the runner boundary instead of inside an estimator."""
+    base = synthetic_runner_dataset()
+    if field == "infinite_feature":
+        features = base.window_train.features.copy()
+        features[0, 0] = np.inf
+        dataset = replace(base, window_train=replace(base.window_train, features=features))
+    else:
+        labels = base.window_train.labels.copy()
+        labels[0] = 2
+        dataset = replace(base, window_train=replace(base.window_train, labels=labels))
+
+    with pytest.raises(ValueError, match=r"(\+/-Inf|tri-state labels)"):
+        run_outer_fold(RunConfig(outer_fold=0, inner_splits=3), dataset)
+
+
+def test_full_target_fit_imputes_missing_values_without_changing_model_schema():
+    """Mixed missing values retain the registered 63/47/56 fitted widths."""
+    from scripts.promote_event_stack import _validated_feature_schema
+    from src.pipeline.runner import build_full_target_dataset, fit_full_target_deployment
+    from tests.pipeline.test_multiscale_runner import multiscale_config, multiscale_dataset
+
+    partition = multiscale_dataset()
+    macro_features = partition.validation.features.copy()
+    micro_features = partition.micro_validation.features.copy()
+    macro_features[0, 0] = np.nan
+    micro_features[0, 0] = np.nan
+    partition = replace(
+        partition,
+        validation=replace(partition.validation, features=macro_features),
+        micro_validation=replace(partition.micro_validation, features=micro_features),
+    )
+
+    class Source:
+        def load_outer_fold(self, _config):
+            return partition
+
+    config = multiscale_config(candidate_control_enabled=True)
+    full = build_full_target_dataset((config,), Source(), expected_truth_count=1)
+    fit, _ = fit_full_target_deployment(
+        config,
+        full,
+        {
+            "micro_threshold": 0.1,
+            "blend_weight": 0.5,
+            "nms_iou": 0.5,
+            "admission_threshold": 0.2,
+            "max_candidates_per_subject": 3,
+            "threshold": 0.5,
+            "max_events_per_group": 1,
+            "verifier_c": 0.1,
+        },
+    )
+
+    assert _validated_feature_schema(fit) == {"macro": 63, "micro": 47, "verifier": 56}
 
 
 def test_full_target_dataset_rejects_duplicate_or_nonmember_slice_truths():

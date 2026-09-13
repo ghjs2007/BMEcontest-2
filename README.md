@@ -255,7 +255,9 @@ SHA-256。打包器只接受这一完整结构，且只原子替换仓库 `dist/
 `(macro, verifier, micro)=(63,56,47)` 重算 cache key；outer/inner 指标、候选/短餐
 召回、切片、计时和 fold 清单均从五份 evidence 依 runner 的同一聚合公式复算。full-target
 训练只拼接经过校验的 outer-validation 分区：macro 原始特征为 62 列并在 time prior 后为
-63 列，micro 为 47 列，所有数组有限且行、sid/subject、truth 与 slice 映射一致；最终写入
+63 列，micro 为 47 列。与训练 pipeline 一致，特征可含由 `SimpleImputer(median)` 处理的
+`NaN`，但拒绝 `+/-Inf` 和整列缺失（默认插补器会丢列）；标签必须是有限三态
+`-1/0/1`，其中 `-1` 在拟合前剔除。候选 verifier 特征遵循同一插补/列宽契约；最终写入
 bundle 的 63/47/56 schema 来自实际拟合 estimator 的 `n_features_in_`。任一不一致都会在
 创建 `models/` 或 `dist/` 前拒绝晋级。
 
