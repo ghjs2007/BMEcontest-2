@@ -705,6 +705,63 @@ def test_macro_filesystem_source_does_not_require_micro_files(filesystem_runner_
         source.input_files(replace(config, micro_enabled=True))
 
 
+def _deployment_input_source(filesystem_runner_source):
+    """Populate the five held-out split artifacts required by deployment."""
+
+    source = filesystem_runner_source
+    split_dir = source.root / "cache" / "splits"
+    for fold in range(1, 5):
+        (source.slide_dir / f"fold{fold}_val.npz").write_bytes(
+            (source.slide_dir / "fold0_val.npz").read_bytes()
+        )
+        (source.micro_dir / f"fold{fold}_val.npz").write_bytes(
+            (source.micro_dir / "fold0_val.npz").read_bytes()
+        )
+        (split_dir / f"fold{fold}.json").write_bytes(
+            (split_dir / "fold0.json").read_bytes()
+        )
+    return source
+
+
+def _deployment_configs():
+    return tuple(RunConfig(outer_fold=fold, micro_enabled=True) for fold in range(5))
+
+
+def test_deployment_inputs_reject_missing_required_validation_split(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+    (source.slide_dir / "fold3_val.npz").unlink()
+
+    with pytest.raises(FileNotFoundError, match="fold3_val\\.npz"):
+        source.deployment_input_files(_deployment_configs())
+
+
+def test_deployment_inputs_exclude_session_caches_that_do_not_define_full_target_union(filesystem_runner_source):
+    source = _deployment_input_source(filesystem_runner_source)
+    manifest = source.root / "cache" / "splits" / "fold2.json"
+    manifest.write_text('{"train_sessions": ["s1"], "val_sessions": ["s3", "missing"]}', encoding="utf-8")
+
+    inputs = source.deployment_input_files(_deployment_configs())
+
+    assert source.session_dir / "s3.npz" not in inputs
+    assert source.session_dir / "missing.npz" not in inputs
+
+
+def test_deployment_inputs_contain_only_existing_held_out_artifacts(filesystem_runner_source):
+    from src.data import manifests
+
+    source = _deployment_input_source(filesystem_runner_source)
+
+    inputs = source.deployment_input_files(_deployment_configs())
+
+    assert all(path.exists() for path in inputs)
+    assert manifests.INDEX_CSV in inputs
+    assert manifests.MEALS_CSV in inputs
+    assert {source.slide_dir / f"fold{fold}_val.npz" for fold in range(5)} <= set(inputs)
+    assert {source.micro_dir / f"fold{fold}_val.npz" for fold in range(5)} <= set(inputs)
+    assert {source.root / "cache" / "splits" / f"fold{fold}.json" for fold in range(5)} <= set(inputs)
+    assert not any("train" in path.name for path in inputs)
+
+
 def historical_result_payload():
     from src.pipeline.event_stack import compute_event_metrics
 

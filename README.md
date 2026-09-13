@@ -261,6 +261,11 @@ SHA-256。打包器只接受这一完整结构，且只原子替换仓库 `dist/
 bundle 的 63/47/56 schema 来自实际拟合 estimator 的 `n_features_in_`。任一不一致都会在
 创建 `models/` 或 `dist/` 前拒绝晋级。
 
+deployment bundle 的输入指纹只覆盖定义 full-target 并集的五个 macro validation cache、
+五个 micro validation cache、五份 fold manifest 与 index/meals manifest；任何一个这些必需
+文件缺失都会拒绝晋级。session cache 不属于这个并集定义，因而不会因存在而被加入指纹，也不会
+因缺失阻塞晋级。所有 train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
+
 部署特征输入必须同时携带稳定 `subject_id` 与会话 `sid`：前者用于冻结的 candidate admission
 预算和 event budget，后者只用于同会话 NMS 与输出事件几何；同一 payload 中的 `sid` 必须全局唯一，
 即使它们属于同一受试者也会被拒绝。CPU 是当前唯一可发布后端；`auto` 因此解析为 CPU，强制 CUDA

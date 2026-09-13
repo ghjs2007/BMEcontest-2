@@ -1557,20 +1557,18 @@ class FilesystemDataSource:
 
         from src.data import manifests
 
-        paths: list[Path] = [manifests.INDEX_CSV, manifests.MEALS_CSV]
+        required: list[Path] = [manifests.INDEX_CSV, manifests.MEALS_CSV]
         for config in configs:
-            paths.append(self._split_path(config.outer_fold, "val"))
+            required.append(self._split_path(config.outer_fold, "val"))
             if config.micro_enabled:
-                paths.append(self._micro_split_path(config.outer_fold, "val"))
+                required.append(self._micro_split_path(config.outer_fold, "val"))
             split_manifest = self.root / "cache" / "splits" / f"fold{config.outer_fold}.json"
-            paths.append(split_manifest)
-            payload = json.loads(split_manifest.read_text(encoding="utf-8"))
-            for sid in payload.get("val_sessions", ()):
-                paths.append(self.session_dir / f"{sid}.npz")
-        missing = [str(path) for path in paths if not path.exists()]
+            required.append(split_manifest)
+
+        missing = [str(path) for path in required if not path.exists()]
         if missing:
             raise FileNotFoundError("missing deployment inputs: " + ", ".join(missing))
-        return tuple(sorted(set(paths), key=lambda path: str(path)))
+        return tuple(sorted(set(required), key=lambda path: str(path)))
 
     @staticmethod
     def _load_batch(path: Path) -> WindowBatch:
