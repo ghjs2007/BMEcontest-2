@@ -1,0 +1,39 @@
+{
+  "aggregate_summary": {
+    "filename": "promotion_summary.json",
+    "sha256": "5834df89bb0983e463ee1fd359cc51e580bb728debb2696ac91002e8378483c6"
+  },
+  "attestation_version": 1,
+  "bundles": {
+    "deployment": {
+      "manifest_sha256": "407b349e2c0f25ca500dcaff485a6513578e0564a22f662abb572e49bbafd645",
+      "role": "deployment"
+    },
+    "outer-fold-0": {
+      "manifest_sha256": "1729bd6b1ae01a7e017a1bf69f755365974548d1743a9f9a31ed823390b16071",
+      "role": "outer-fold-evidence"
+    },
+    "outer-fold-1": {
+      "manifest_sha256": "5afae93d9f5d16c7882eeeb07ba4ee91d48b1cba9540e198bd9e5c494e909357",
+      "role": "outer-fold-evidence"
+    },
+    "outer-fold-2": {
+      "manifest_sha256": "530120276c5fc75a03ec0bd06f0e0c971c5895f6f637fda0da7d1a364fedf5f8",
+      "role": "outer-fold-evidence"
+    },
+    "outer-fold-3": {
+      "manifest_sha256": "7ad7203914828cfd2d82284fd976ab1591f8e1db54e12f255fd912df1747ef16",
+      "role": "outer-fold-evidence"
+    },
+    "outer-fold-4": {
+      "manifest_sha256": "5561d9ae40805adc6757e4a9f648703a6fbe0181294008aaff3bec6961141a45",
+      "role": "outer-fold-evidence"
+    }
+  },
+  "gate": {
+    "f1": 0.5432098765432098,
+    "floor": 0.47863247863247865,
+    "version": 1
+  },
+  "run_key": "a7396a9aa7c38f42"
+}
