@@ -14,7 +14,9 @@ import argparse
 import hashlib
 import json
 import math
+import platform
 import sys
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -24,6 +26,12 @@ import numpy as np
 
 _MODEL_NAMES = ("macro", "micro", "verifier_logistic", "verifier_lgbm")
 _METADATA_NAMES = ("policy.json", "run_config.json", "feature_schema.json")
+_RUNTIME_DEPENDENCIES = (
+    ("numpy", "numpy"),
+    ("joblib", "joblib"),
+    ("scikit_learn", "scikit-learn"),
+    ("lightgbm", "lightgbm"),
+)
 _DEVICE_CHOICES = ("auto", "cpu", "gpu", "cuda")
 # TODO: Add an audited, source-controlled CUDA component identifier here only
 # after its implementation and release verification are available.  A package
@@ -149,6 +157,45 @@ def _runtime_capabilities(bundle_path: Path) -> bool:
     return _has_registered_cuda_component()
 
 
+def _validate_runtime_dependencies(manifest: Mapping[str, Any]) -> None:
+    """Refuse incompatible pickle runtimes before deserializing any model."""
+
+    versions = manifest.get("dependency_versions")
+    expected_keys = {"python", *(key for key, _ in _RUNTIME_DEPENDENCIES)}
+    if not isinstance(versions, dict) or set(versions) != expected_keys:
+        raise ValueError("bundle manifest dependency_versions are incomplete or incompatible")
+    expected_python = versions["python"]
+    if not isinstance(expected_python, str):
+        raise ValueError("bundle manifest python runtime version is invalid")
+    expected_parts = expected_python.split(".")
+    actual_parts = platform.python_version().split(".")
+    if (
+        len(expected_parts) != 3
+        or not all(part.isdigit() for part in expected_parts)
+        or len(actual_parts) < 2
+        or actual_parts[:2] != expected_parts[:2]
+    ):
+        raise ValueError(
+            "Python runtime version mismatch: expected "
+            f"{expected_python} (requires Python {'.'.join(expected_parts[:2])}.x), "
+            f"installed {platform.python_version()}"
+        )
+    for manifest_key, distribution in _RUNTIME_DEPENDENCIES:
+        expected = versions[manifest_key]
+        if not isinstance(expected, str) or not expected:
+            raise ValueError(f"bundle manifest {distribution} runtime version is invalid")
+        try:
+            installed = importlib_metadata.version(distribution)
+        except importlib_metadata.PackageNotFoundError as exc:
+            raise ValueError(
+                f"{distribution} runtime version mismatch: expected {expected}, installed missing"
+            ) from exc
+        if installed != expected:
+            raise ValueError(
+                f"{distribution} runtime version mismatch: expected {expected}, installed {installed}"
+            )
+
+
 def _probability(model: object, row: list[float], width: int, name: str) -> float:
     values = np.asarray(row, dtype=np.float64)
     if values.shape != (width,) or not np.isfinite(values).all():
@@ -238,8 +285,9 @@ def predict_feature_payload(bundle_path: Path, payload: Mapping[str, Any], *, de
     """Score schema-verified precomputed candidate features into canonical events."""
 
     bundle_path = Path(bundle_path)
-    _, policy, schema = _verify_bundle(bundle_path)
+    manifest, policy, schema = _verify_bundle(bundle_path)
     _runtime_capabilities(bundle_path)
+    _validate_runtime_dependencies(manifest)
     resolved_device = resolve_device(device)
     if not isinstance(payload, Mapping):
         raise ValueError("input feature payload must be an object")

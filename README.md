@@ -60,6 +60,12 @@
    准入配置、事件阈值和预算均在 outer-train 内冻结。
 7. **发布与追溯**：每次晋级同时保留 canonical 五折 summary、5 个 outer-fold evidence、
    full-target deployment bundle 和 attestation；manifest 记录模型/输入指纹与 SHA-256。
+8. **发布运行时 ABI**：event-stack 的 `requirements.txt` 由 deployment `manifest.json` 的
+   `dependency_versions` 原样生成，顺序固定为 numpy、joblib、scikit-learn、lightgbm，且全部
+   使用 `==` 精确 pin。当前 deployment manifest 为 Python `3.11.15`、numpy `2.4.6`、
+   joblib `1.5.3`、scikit-learn `1.9.0`、lightgbm `4.7.0`。Python 不由 requirements 安装，
+   但运行环境必须为 Python `3.11.x`；推理会在任一 joblib 模型反序列化前核验 Python 主/次版本
+   与上述四个包的精确版本，不匹配即拒绝，不降级为 warning 或尝试加载。
 
 **对照系统（检测即排序 v2 + FD 预训练）**：多参数提案 + LGBM/TCN 深度双排序 +
 会话门控 + 形态学后处理，全局 F1 均值 ~0.27（eligible 校正）。保留作为对照与

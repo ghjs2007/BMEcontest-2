@@ -37,6 +37,14 @@ cap 和 event budget 按 `subject_id` 执行。
 
 ## 运行
 
+### 运行时 ABI（必须满足）
+
+该 deployment manifest 记录的构建环境为 Python `3.11.15`；运行时必须为 Python
+`3.11.x`。Python 本身不写入 requirements，但 `event_stack/requirements.txt` 会从该 manifest
+生成 numpy `2.4.6`、joblib `1.5.3`、scikit-learn `1.9.0`、lightgbm `4.7.0` 的精确 `==` pin。
+推理程序会在加载任何 joblib 模型之前再次核验 Python 主/次版本和全部四个包的精确版本；不匹配会
+明确拒绝，不能依赖 sklearn 的兼容性 warning 继续运行。
+
 ```bash
 pip install -r event_stack/requirements.txt
 python event_stack/predict_event_stack.py \

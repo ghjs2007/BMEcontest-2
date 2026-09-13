@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+import re
 from pathlib import Path
 
 
@@ -33,6 +34,15 @@ _MODEL_FILES = (
     "macro.joblib", "micro.joblib", "verifier_logistic.joblib", "verifier_lgbm.joblib",
     "policy.json", "run_config.json", "feature_schema.json", "manifest.json",
 )
+_DEPENDENCY_REQUIREMENTS = (
+    ("numpy", "numpy"),
+    ("joblib", "joblib"),
+    ("scikit_learn", "scikit-learn"),
+    ("lightgbm", "lightgbm"),
+)
+_DEPENDENCY_VERSION_KEYS = frozenset(("python", *(key for key, _ in _DEPENDENCY_REQUIREMENTS)))
+_THREE_PART_VERSION = re.compile(r"[0-9]+(?:\.[0-9]+){2}(?:[A-Za-z0-9.+_-]*)")
+_PYTHON_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 EXPECTED_EVENT_STACK_PATHS = frozenset(
     set(_RUNTIME_FILES) | {f"bundle/{name}" for name in _MODEL_FILES}
 )
@@ -61,11 +71,30 @@ def _canonical_json(payload: object) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
 
 
-def _write_requirements(destination: Path) -> None:
-    destination.write_text(
-        "numpy>=1.26\njoblib>=1.3\nscikit-learn>=1.4\nlightgbm>=4.3\n",
-        encoding="utf-8",
-    )
+def requirements_from_manifest(manifest: object) -> str:
+    """Render exact, model-recorded package pins in a stable install order."""
+
+    if not isinstance(manifest, dict):
+        raise ValueError("deployment manifest dependency_versions must be an object")
+    versions = manifest.get("dependency_versions")
+    if not isinstance(versions, dict) or set(versions) != _DEPENDENCY_VERSION_KEYS:
+        raise ValueError("deployment manifest dependency_versions are incomplete or incompatible")
+    python_version = versions.get("python")
+    if not isinstance(python_version, str) or not _PYTHON_VERSION.fullmatch(python_version):
+        raise ValueError("deployment manifest dependency_versions python version is invalid")
+    lines: list[str] = []
+    for manifest_key, distribution in _DEPENDENCY_REQUIREMENTS:
+        version = versions.get(manifest_key)
+        if not isinstance(version, str) or not _THREE_PART_VERSION.fullmatch(version):
+            raise ValueError(
+                f"deployment manifest dependency_versions {manifest_key} version is invalid"
+            )
+        lines.append(f"{distribution}=={version}")
+    return "\n".join(lines) + "\n"
+
+
+def _write_requirements(destination: Path, manifest: object) -> None:
+    destination.write_bytes(requirements_from_manifest(manifest).encode("utf-8"))
 
 
 def _build_runtime_manifest(staging: Path) -> None:
@@ -215,8 +244,9 @@ def package_event_stack(
     problems = verify_bundle_manifest(bundle_path, expected_run_key="deployment")
     if problems:
         raise ValueError("deployment bundle manifest verification failed: " + "; ".join(problems))
-    load_event_stack_bundle(bundle_path, expected_role="deployment")
     manifest = json.loads((bundle_path / "manifest.json").read_text(encoding="utf-8"))
+    requirements_from_manifest(manifest)
+    load_event_stack_bundle(bundle_path, expected_role="deployment")
     try:
         f1 = float(manifest["metrics"]["f1"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -240,7 +270,7 @@ def package_event_stack(
     try:
         staging.mkdir()
         shutil.copy2(_PREDICTOR, staging / "predict_event_stack.py")
-        _write_requirements(staging / "requirements.txt")
+        _write_requirements(staging / "requirements.txt", manifest)
         shutil.copytree(bundle_path, staging / "bundle", symlinks=False)
         _build_runtime_manifest(staging)
         _verify_fixture_parity(staging, bundle_path)

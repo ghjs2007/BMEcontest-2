@@ -177,6 +177,34 @@ def test_dist_package_is_complete_and_matches_repository_prediction(tmp_path: Pa
     assert packaged_bytes == repository_bytes
 
 
+def test_packager_pins_requirements_from_the_verified_deployment_manifest(tmp_path: Path):
+    """A model-runtime mismatch must not be hidden behind permissive pins."""
+
+    dist, bundle = package_fixture_bundle(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    versions = manifest["dependency_versions"]
+    assert (dist / "requirements.txt").read_text(encoding="utf-8") == (
+        f"numpy=={versions['numpy']}\n"
+        f"joblib=={versions['joblib']}\n"
+        f"scikit-learn=={versions['scikit_learn']}\n"
+        f"lightgbm=={versions['lightgbm']}\n"
+    )
+    runtime = json.loads((dist / "runtime_manifest.json").read_text(encoding="utf-8"))
+    assert runtime["files"]["requirements.txt"] == package_module._sha256(dist / "requirements.txt")
+
+
+@pytest.mark.parametrize("dependency_versions", [
+    {},
+    {"python": "3.11.15", "numpy": "2.4.6", "joblib": "1.5.3", "scikit_learn": "1.9.0", "lightgbm": None},
+    {"python": "3.11", "numpy": "2.4.6", "joblib": "1.5.3", "scikit_learn": "1.9.0", "lightgbm": "4.7.0"},
+])
+def test_packager_refuses_missing_or_invalid_dependency_versions(dependency_versions):
+    """Missing model dependency metadata must never create a guessed package."""
+
+    with pytest.raises(ValueError, match="dependency_versions"):
+        package_module.requirements_from_manifest({"dependency_versions": dependency_versions})
+
+
 def test_package_rejects_non_deployment_and_incomplete_bundles_without_destination(tmp_path: Path):
     bundle = fitted_deployment_bundle()
     outer = tmp_path / "models" / "event_stack" / "run" / "outer-fold-0"
@@ -273,6 +301,51 @@ def test_packaged_runtime_manifest_rejects_tampered_runtime_file(tmp_path: Path)
 
     with pytest.raises(ValueError, match="runtime manifest.*checksum"):
         packaged.predict_feature_payload(dist / "bundle", fixture, device="cpu")
+
+
+def test_packaged_runtime_refuses_an_incompatible_sklearn_before_deserializing_models(
+    tmp_path: Path, monkeypatch
+):
+    """Changing only sklearn's ABI-sensitive runtime version must stop inference."""
+
+    dist, _ = package_fixture_bundle(tmp_path)
+    packaged = _load_module(dist / "predict_event_stack.py")
+    original_version = packaged.importlib_metadata.version
+    manifest = {
+        "dependency_versions": {
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "numpy": original_version("numpy"),
+            "joblib": original_version("joblib"),
+            "scikit_learn": "1.9.0",
+            "lightgbm": original_version("lightgbm"),
+        }
+    }
+
+    monkeypatch.setattr(
+        packaged.importlib_metadata,
+        "version",
+        lambda distribution: "1.6.1" if distribution == "scikit-learn" else original_version(distribution),
+    )
+
+    with pytest.raises(ValueError, match=r"scikit-learn.*expected .* installed 1.6.1"):
+        packaged._validate_runtime_dependencies(manifest)
+
+
+def test_documented_script_paths_exist():
+    """README command references must remain executable project paths."""
+
+    import re
+
+    documentation = (
+        Path("README.md").read_text(encoding="utf-8"),
+        Path("dist/README.md").read_text(encoding="utf-8"),
+        Path("docs/数据处理说明.md").read_text(encoding="utf-8"),
+    )
+    documented_scripts = {
+        path for text in documentation for path in re.findall(r"scripts/[A-Za-z0-9_]+\.py", text)
+    }
+    assert documented_scripts
+    assert all(Path(path).is_file() for path in documented_scripts)
 
 
 def test_packaged_entrypoint_runs_in_isolated_subprocess_and_reports_resolved_device(tmp_path: Path):
