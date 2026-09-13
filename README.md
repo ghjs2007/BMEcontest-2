@@ -27,20 +27,21 @@
 3. 全程使用真实传感器时间戳（包级恢复 + 缺口切段），杜绝时间轴漂移类评估伪影；
 4. 数据驱动的两阶段方案：全覆盖滑窗粗召回 → 事件级复核精控精度。
 
-## 3. 设计原理及方案（全覆盖滑窗 + 两级检测，当前主系统）
+## 3. 设计原理及方案（event-stack 当前发布系统）
 
 ```
 240s 窗 / 15s 步长全覆盖滑窗（真实时间戳网格，窗不跨缺口，覆盖率 ≥0.8）
   → 62 维 ACC 特征（三轴+幅值+jerk 稳健统计 + 1s 活动包络时间特征）
   → HistGradientBoosting 窗分类器（正：与餐重叠>50%；严格负：距餐≥300s；
      边界窗 -1 不训练；负样本每会话 ≤3× 正窗）
-  → 密度聚合候选（600s 中心窗 ≥10 越阈窗 + ≥80% 真实数据覆盖；
-     事件边界 = 越阈窗跨度，120s 合并）
-  → 33 特征概率形态 L2 复核器（事件内形态 + 前/后 20min 上下文）
+  → macro 候选 ∪ 15s/7.5s ACC+GYRO micro 候选
+  → 同会话稳定 NMS + subject admission（阈值/IoU/cap 只由 train OOF 选择）
+  → LogisticRegression 与受限 LightGBM 概率 blend（56 维事件复核）
+  → 冻结 event policy（阈值、事件几何与 subject budget）
   → 官方评估（IoU≥0.25 一对一匹配；eligible 质量审计分母）
 ```
 
-**设计要点**（对照实验与组内方案借鉴结论）：
+**设计要点**（当前发布契约；历史对照见 §5）：
 
 1. **全覆盖滑窗替代活动提案**：proposal 依赖"餐时段有 ≥3.8min 连续活动段"（几何
    上仅 47-58% 餐可达 IoU≥0.25），滑窗使每餐必然被多窗覆盖（正窗 1112/折 vs 17），
@@ -54,6 +55,11 @@
    IoU≥0.25 模糊边缘窗的训练噪声；
 5. **质量审计（eligible 分母）**：每折 5-20% 餐数据不可达（会话缺失/时段缺口/
    时间错位）——评估分母用可评估餐集合，避免系统性低估（旧方案分母含不可达餐）。
+6. **候选控制与 stacking**：macro/micro 并集先做同 `sid` 的确定性 NMS，再按稳定
+   `subject_id` 做准入；两个事件复核器在 subject-disjoint OOF 上各打分一次，融合权重、
+   准入配置、事件阈值和预算均在 outer-train 内冻结。
+7. **发布与追溯**：每次晋级同时保留 canonical 五折 summary、5 个 outer-fold evidence、
+   full-target deployment bundle 和 attestation；manifest 记录模型/输入指纹与 SHA-256。
 
 **对照系统（检测即排序 v2 + FD 预训练）**：多参数提案 + LGBM/TCN 深度双排序 +
 会话门控 + 形态学后处理，全局 F1 均值 ~0.27（eligible 校正）。保留作为对照与
@@ -276,6 +282,36 @@ train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
 声明。未来只能通过代码内显式、审计过的注册协议添加设备实现；CPU/CUDA 输出相近本身不能证明实际
 在 CUDA 上执行。
 
+### 5.10 当前严格最佳：候选控制 + Logistic/LightGBM blend（2026-09-13）
+
+实验 key 为 `a7396a9aa7c38f42`。这是一次严格五折、四路 inner subject-disjoint OOF 选择后的
+开发证据；它比旧微窗并集结果 `0.4786324786`（112/153、315 个预测、203 个 FP）提升，
+但仍不是 untouched 测试集泛化估计。旧结果的 raw union 为 3,413，现版本 admission 后为
+310（每折 admission 上限实际为 62/56/64/64/64），全目标域 deployment 训练使用五个
+outer-validation 分区的合法并集（不是把 outer 标签回灌到选择过程）。
+
+| fold | config hash | micro 阈值 | blend | admission (IoU/阈值/cap) | raw/admitted | TP/eligible/pred | F1 | candidate recall | final short recall |
+|---|---|---:|---:|---|---:|---:|---:|---:|---:|
+| 0 | `11ce99015e46ef2d` | 0.10 | 0.75 | 0.3/0.2/8 | 713/62 | 14/23/26 | 0.5714285714 | 16/23 | 1/7 |
+| 1 | `96a0966d51b3199e` | 0.20 | 0.75 | 0.3/0.2/8 | 726/56 | 26/31/56 | 0.5977011494 | 26/31 | 3/4 |
+| 2 | `db3c521d292511dd` | 0.10 | 0.75 | 0.3/0.2/8 | 644/64 | 18/27/52 | 0.4556962025 | 18/27 | 4/8 |
+| 3 | `ccf3f7e5efb116e7` | 0.10 | 0.75 | 0.3/0.2/8 | 710/64 | 25/32/61 | 0.5376344086 | 27/32 | 7/13 |
+| 4 | `ee97b02b839f203e` | 0.10 | 1.00 | 0.3/0.2/8 | 620/64 | 27/40/57 | 0.5567010309 | 30/40 | 3/7 |
+| **聚合** | — | — | — | — | **3413/310** | **110/153/252** | **0.5432098765** | **117/153=0.7647058824** | **18/39=0.4615384615** |
+
+聚合 PPV 为 `0.4365079365`（FP=142），recall 为 `0.7189542484`；raw union 为 3,413，
+micro candidates 为 2,773，admission 后候选为 310。相比旧 `0.4786324786`（TP=112、
+pred=315、FP=203），F1 提升 `+0.0645773979`，PPV 和候选负担均改善。它未通过推荐默认门：
+短餐最终 recall 仅 `18/39=0.4615384615`（推荐门 `≥0.65`）；candidate short recall
+为 `0.5384615385`，且项目目标 `F1≥0.65` 尚未达到。因此状态为“已固化的严格改进、
+暂不推荐为默认”。
+
+模型路径为 `models/event_stack/a7396a9aa7c38f42/`（5 个 outer-fold、deployment、
+`promotion_summary.json`、`promotion_attestation.json`），发布包为 `dist/event_stack/`。
+attestation 绑定 canonical summary、严格五折和每个 manifest 的 SHA-256；deployment manifest
+另记录 full-target provenance。输入仍是 63/47/56 维的预计算特征 JSON，不是原始会话；raw-session
+adapter 尚未完成。当前 CPU-only：`auto` 解析 CPU，强制 `gpu/cuda` 在无 CUDA adapter 时明确失败。
+
 ## 6. 结果分析与评价
 
 ### 6.1 两方案瓶颈分解对比
@@ -319,19 +355,23 @@ train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
 
 ## 7. 总结与应用展望
 
-**总结**：构建了"全覆盖滑窗 + 两级检测"进食事件检测系统——62 特征 HGB 窗分类
-（+TCN 深度分）+ 密度聚合 + 37 特征事件复核，受试者互斥零信息 5 折官方口径
-F1 均值 0.505（聚合 0.512）；严格修复了时间轴类评估伪影（第一轮 peer review
-审计）与 wbag 跨折受试者泄漏（第二轮审计——0.617 作废，干净协议重估），以
-eligible 质量审计分母保证分数可信；与组内平行方案同架构同协议互证（0.49-0.52
-同量级），验证了"覆盖优先 + 事件级复核"优于"提案 + 单级排序"。
+**总结**：当前严格最佳为 event-stack 候选控制/stacking 版本——240s macro 与 15s
+ACC+GYRO micro 全覆盖候选，经同会话 NMS、subject admission，再由 LogisticRegression
+与 LightGBM blend 复核并执行冻结 event policy；严格五折聚合为 **F1 0.5432098765
+（110/153/252，PPV 0.4365079365，recall 0.7189542484）**。严格修复了时间轴类评估伪影
+与 wbag 跨折受试者泄漏（0.617 作废），并以 eligible 质量审计分母和 nested OOF 保证
+选择隔离。该结果虽已固化并优于旧 0.4786324786，但最终短餐 recall 0.461538（candidate
+short recall 0.538462）未达推荐门
+0.65，F1 也未达项目目标 0.65，故仍标记为开发证据而非最终泛化承诺。
 
 **展望**：
 1. 复核层结构改进：缺口邻域强证据餐的接受（密度覆盖率语义已修复，需复核适配，
    见 5.3）；短餐候选召回（窗证据弱是主因）；
 2. 窗口层（fold2 AUC 0.785 最弱）：新特征源（GYRO/PPG）或长上下文窗表示；
 3. 餐时误报（PPV 底噪）：部分为未记录进食，需事件级上下文/行为模式判别；
-4. 全数据重训部署模型 + dist 同步（干净协议评估口径已就绪）。
+4. raw-session adapter：目前 dist 只接受预计算 63/47/56 维特征 JSON；补齐适配器后再
+   重新做无训练数据的 CPU smoke/parity 验证。FD-I/FD-II 迁移仅在该目标域基线稳定后
+   启动，保留随机初始化和 external_weight=0 对照并遵守数据许可证。
 
 ---
 
@@ -346,8 +386,13 @@ python scripts/slide_features.py --fold {0..4} --mode train
 python scripts/slide_features.py --fold {0..4} --mode meal_train
 python scripts/slide_features.py --fold {0..4} --mode no_meal_train
 python scripts/slide_features.py --fold {0..4} --mode val
-# 3. 正式 locked nested 滑窗评估（CPU 自动并行；重复运行复用内容寻址缓存）
-python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 0
+# 3. 正式 locked nested event-stack 评估（当前严格最佳；CPU-only，重复运行复用缓存）
+python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 0 \
+    --micro-enabled --candidate-control-enabled
+# 3a. 晋级与发布（仅当 aggregate F1 严格高于 0.4786324786；当前 key=a7396a9aa7c38f42）
+python scripts/promote_event_stack.py --summary outputs/crossfit/summary_a7396a9aa7c38f42.json
+python scripts/package_event_stack.py --bundle models/event_stack/a7396a9aa7c38f42/deployment \
+    --destination dist/event_stack
 # 3b. ACC+GYRO 微窗口候选并集消融（当前因候选体积门槛未采纳为默认）
 D:/Anaconda3/envs/bme/python.exe scripts/build_micro_features.py --fold all --split all --workers 8
 D:/Anaconda3/envs/bme/python.exe scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 0 --micro-enabled
@@ -365,16 +410,37 @@ python scripts/official_iou_eval.py --all
 ## 项目结构
 
 ```
-src/            # 核心库（config/data/eval/infer/models）
-scripts/        # 滑窗管线（slide_*）+ 对照系统 + FD 预训练 + 官方评估
-docs/           # 三阶段重构设计.md（架构/实验矩阵/变更日志）+ 数据处理说明.md
+src/            # 核心库（config/data/eval/infer/models/pipeline/event_stack）
+scripts/        # event-stack、滑窗管线、对照系统、FD 预训练与官方评估
+docs/           # 正式架构、数据处理、组内/外部数据审计与发布说明
 checkpoints/    # FD 预训练权重（fd_pretrained_s1.pt）
 cache/          # 可重建缓存（sessions/slide/crossfit/cand_windows/validate_baselines/splits）
 outputs/        # crossfit/ locked 结果 + slide_verifier 诊断结果 + 对照系统产物
-dist/           # 提交包（predict.py + 5 折权重 + src 子集）
+dist/           # event_stack 发布包（当前预计算特征输入）+ 遗留对照推理包
 FDdatasets/     # FD-I/FD-II（KU Leuven 外部数据）
 ReferenceDocs/  # 文献综述（报告引用素材）
 Archieves/  Data/   # 历史与原始数据（保留）
 ```
 
-设计文档：docs/三阶段重构设计.md（架构细节、完整实验矩阵、时间轴修复审计记录）。
+设计文档：docs/三阶段重构设计.md（当前架构、严格结果、审计时间线与迁移边界）。
+
+## 开发过程与决策时间线、协议审计与迁移路线
+
+- **时间轴审计**：修复 `WINDOW_MS=525000` 的毫秒/行数混用，以及按行号而非包级时间戳
+  定位窗口的问题；旧 0.319/0.333 结果作废。评估统一为 IoU≥0.25、eligible 153-event
+  分母和真实时间戳。
+- **第二轮 peer review**：确认 v5.1 跨折 wbag 泄漏（0.617/0.632 作废），确认 LOSO
+  verifier 曾见留出受试者并已重训修复；严格 LOSO 为 0.416（67/153）。TCN 在干净协议
+  全折有增益，但 CPU 发布仍采用 no-TCN。组内 0.652/0.499 等数字因阈值、正类提纯或
+  纯负会话口径未嵌套，不能直接横比。
+- **架构决策**：活动提案覆盖不足，切换为 240s/15s 全覆盖 macro；组内审计确认
+  15s ACC+GYRO 与旋转稳健特征值得迁移，于是加入 micro 候选。微窗并集曾达到
+  0.478632（112/153/315），但 raw union 3,413 超过 612 候选体积门，保留为历史证据。
+- **当前晋级**：candidate-control spec 固定同会话 NMS、subject admission、LR/LGBM
+  blend 和事件策略只在 outer-train 的四路 subject-disjoint OOF 选择；实验 key
+  `a7396a9aa7c38f42` 得到 F1 0.5432098765（110/153/252，FP 142），候选 admission
+  310、raw union 3,413，最终短餐 18/39=0.461538（candidate short recall 0.538462）。F1 提升已固化并生成 5+1 bundle、
+  provenance 与 attestation，但短餐未达推荐门 0.65、F1 未达 0.65，暂不宣称默认最优。
+- **迁移学习路线**：先补齐 raw-session adapter 和短餐/餐时 hard-negative，再在同一
+  15s 表示上评估 FD-I/FD-II；必须保留随机初始化、`external_weight=0` 控制，未经许可
+  确认不纳入 WIMID/CAD，遵守 FD 的 CC BY-NC-ND 4.0 条款。

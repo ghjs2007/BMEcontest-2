@@ -13,3 +13,10 @@ outputs/*.txt
 /outputs/crossfit/
 /outputs/slide_cand_fold*.npz
 /outputs/slide_diag_fold*.json
+/.superpowers/
+/.pytest_cache/
+*.tmp
+*.bak
+.coverage
+.mypy_cache/
+.ruff_cache/

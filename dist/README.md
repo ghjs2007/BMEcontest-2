@@ -1,29 +1,18 @@
-# 进食事件检测推理包（滑窗管线版）
+# 进食事件检测发布包：event-stack
 
-> 状态（2026-09-11）：本目录尚未包含 `event_stack/` 正式发布包。当前可运行的仍是下文
-> 的旧滑窗管线。候选控制/stacking 的 `dist/event_stack` 只可由
-> `scripts/package_event_stack.py` 从通过严格晋级门槛的 `role=deployment` bundle 原子生成；
-> Task 6 在尚未产生合法 deployment bundle 前不得覆盖或创建该目录。
+状态（2026-09-13）：`event_stack/` 为实验 key `a7396a9aa7c38f42` 的 CPU 发布包。该版本
+来自严格 subject-disjoint nested 五折开发证据，聚合 F1=`0.5432098765`
+（TP/eligible/pred=`110/153/252`，PPV=`0.4365079365`，recall=`0.7189542484`，
+FP=`142`），最终短餐 recall=`18/39=0.4615384615`（candidate short recall=`0.5384615385`）。它优于旧 `0.4786324786`，但短餐尚未
+达到推荐门 `0.65`，F1 也未达到项目目标 `0.65`，所以这是已固化但暂不推荐默认的开发版本，
+不是 untouched 测试集泛化承诺。
 
-## 未来 event-stack 包（受限输入契约）
+## 输入契约
 
-正式 bundle 就绪后，运行：
-
-```bash
-python event_stack/predict_event_stack.py \
-  --bundle event_stack/bundle \
-  --input-features candidates.json \
-  --output predictions.json \
-  --device auto
-```
-
-`--device` 仅接受 `auto|cpu|gpu|cuda`，其中 `gpu` 等同 `cuda`。当前 sklearn/LightGBM
-组件均为 CPU：`auto` 会报告 `resolved_device=cpu`，而强制 `gpu/cuda` 会明确失败，绝不将
-CPU 树模型伪报为 GPU 推理。当前 CUDA adapter registry 为空，因此无需安装 torch；打包或加载
-发现 `cuda_adapter.py` 或任何 CUDA/component 声明都会拒绝该包。未来只有代码内显式、审计过的
-注册协议可以启用设备实现；CPU/CUDA 输出相近或事件几何一致都不能证明推理实际使用 CUDA。
-
-输入不是原始 `collect_data*.txt` 会话，而是已生成的、可审计的候选特征 JSON：
+当前包只接受已生成、可审计的候选特征 JSON，不读取原始 `collect_data*.txt` 会话。每个
+候选必须携带有限值数组：macro 63 维、micro 47 维、verifier 56 维；同时必须有稳定
+`subject_id` 和全局唯一 `sid`。`sid` 只用于同会话 NMS 与事件几何，准入阈值、candidate
+cap 和 event budget 按 `subject_id` 执行。
 
 ```json
 {
@@ -42,76 +31,47 @@ CPU 树模型伪报为 GPU 推理。当前 CUDA adapter registry 为空，因此
 }
 ```
 
-运行时会校验 bundle manifest 的每个模型/metadata SHA-256、完整模型集合和 deployment role，
-并拒绝 schema/hash 不匹配。`subject_id` 与 `sid` 都是必填；`sid` 仅定义会话几何，冻结的
-candidate NMS/准入阈值/每受试者 cap 以及 event 阈值/每受试者 event cap 均按 `subject_id`
-执行。未知或遗留字段、缺失 subject_id、任何重复 sid（包括同一 subject_id 内）均会被拒绝。输出为稳定
-排序、紧凑 canonical JSON：
+未知字段、缺失 ID、重复 `sid`、schema/hash 不匹配、`NaN`/`Inf` 或错误列宽均拒绝。输出
+为稳定排序的 canonical JSON：
 `{"events":[{"sid":...,"start_ms":...,"end_ms":...,"score":...}],"resolved_device":"cpu"}`。
-
-发布只接受正式 `promote_summary` 路径写出的 deployment bundle：同一 run 根目录必须包含
-canonical aggregate summary 与 `promotion_attestation.json`，后者绑定 run key、严格五个 outer
-fold、门槛/F1 和全部五折及 deployment manifest 的 SHA-256。该 attestation 是结构化可验证
-来源，不是秘密签名；手写 deployment manifest 中的 F1 不能绕过晋级门槛。打包器的默认目标是
-仓库 `dist/event_stack`，并只允许显式可信 `dist` 根下的精确 `event_stack` 子目录；不会触碰
-`dist/` 的旧文件。
-
-这是一个有意的临时限制：Task 4 artifact 未包含从原始会话构造 macro-63、micro-47、
-verifier-56 特征的已验证运行时模块、候选器配置或模型输入适配器；旧 `predict.py` 的
-MM-Ranker 深度管线不兼容，不能作为替代。Task 6 前必须补齐并验证该 raw-session adapter，
-才能宣称 event-stack 支持原始会话输入。
-
-对智能手表传感器会话（HUAWEI Research 格式目录，含 collect_data*.txt）
-输出检测到的进食事件（Episode 起止时间，毫秒时间戳）。
 
 ## 运行
 
 ```bash
-pip install -r requirements.txt
-python predict.py --input <会话目录或目录列表txt> --output predictions.json
+pip install -r event_stack/requirements.txt
+python event_stack/predict_event_stack.py \
+  --bundle event_stack/bundle \
+  --input-features candidates.json \
+  --output predictions.json \
+  --device auto
 ```
 
-可选参数：--thr 0.717（复核阈值，默认取 slide_models/config.json 中位）
-单会话纯 CPU 约 5-9 秒（2000+ 滑窗 × 5 模型 bag）。
+`--device` 支持 `auto|cpu|gpu|cuda`，其中 `gpu` 是 `cuda` 别名。当前 sklearn/LightGBM
+组件均为 CPU，`auto` 明确解析为 CPU；强制 `gpu/cuda` 在 CUDA 不可用或 bundle 没有显式
+CUDA-capable component 时必须失败，不能伪报 GPU。当前 CUDA adapter registry 为空。
 
-## 输出
-
-JSON：{ "<会话目录名>": [ [start_ms, end_ms], ... ], ... }
-
-## 管线（主系统：全覆盖滑窗 + 两级检测）
+## 真实架构
 
 ```
-会话 TSV → 240s/15s 全覆盖滑窗（真实时间戳，窗不跨缺口）
-  → 62 维 ACC 特征 + 时刻先验（统计/1s 活动包络/峰率/频谱）
-  → 5 折 HistGradientBoosting bag 概率（slide_models/wmodel_fold{k}.joblib）
-  → 密度聚合候选（600s 中心 ≥10 越阈窗 + ≥80% 覆盖，越阈窗跨度定边界）
-  → 37 特征 L2 复核器（slide_models/verifier.joblib；概率形态 + 上下文 + 时刻）
-  → 阈值解码 → 事件
+240s/15s macro（63 维） ∪ 15s/7.5s ACC+GYRO micro（47 维）
+  → 同 sid 稳定 NMS
+  → subject admission（阈值、IoU、cap 由 train OOF 冻结）
+  → LogisticRegression + 受限 LightGBM（56 维事件复核）概率 blend
+  → 冻结 event policy → canonical Episode JSON
 ```
 
-纯 CPU 推理（无 GPU/TCN 依赖）；scikit-learn + numpy + scipy 即足够。
+当前五折 raw union 为 3,413，micro candidates 为 2,773，admission 后候选为 310。模型和
+追溯信息在 `event_stack/bundle/`：manifest 保存模型 SHA-256、输入 provenance、依赖版本
+和 deployment role；根项目还保留五个 outer-fold evidence、`promotion_summary.json` 和
+`promotion_attestation.json`。发布包只能由注册的 `scripts/package_event_stack.py` 从合法
+deployment bundle 原子生成，不能手工替换。
 
-## 性能（官方口径 IoU≥0.25，eligible 质量审计分母）
+## 限制与后续
 
-**协议说明（重要）**：主仓库 v5.1 报告值 0.617/0.632 及本包早期"部署验证 ~0.60"
-系 wbag 泄漏协议产物——评估折的窗口概率由 5 折模型平均得到，其中 fold m≠k 模型
-训练过折 k val 受试者的其他会话（受试者记忆）。第二轮 peer review 指出后已作废，
-重估采用**受试者互斥零信息协议**（本折模型只见过本折 train 受试者，与部署到
-全新受试者同构；复核器只用本折 train 候选训练）：
+raw-session adapter 尚未完成，不能把本包描述为原始会话端到端推理。下一步先补齐该适配器、
+短餐/餐时 hard-negative 与候选簇去重，再启动 FD-I/FD-II 的独立迁移门控；必须保留随机
+初始化和 `external_weight=0` 对照，并遵守 FD 的 CC BY-NC-ND 4.0 许可及署名限制。
 
-| 干净协议 F1（单模型，无 TCN——与部署同构） | fold0 | fold1 | fold2 | fold3 | fold4 | 均值 |
-|---|---|---|---|---|---|---|
-| | 0.378 | 0.645 | 0.300 | 0.407 | 0.515 | **0.449** |
-
-- 主仓库 v6 干净协议（含 TCN 特征，训练期 GPU 评估）：均值 **0.505**、聚合
-  **0.512**——TCN 为干净协议下的真实增益（CPU 部署版不含）；
-- 严格 LOSO（每留一受试者重训窗模型 + 复核器，CPU 口径，固定阈值 0.717）：
-  聚合 F1 **0.416**（67/153）。
-- 部署 bag（5 折模型平均，全部模型未见测试受试者——部署场景零泄漏）：
-  干净的折内多样 bag（负样本重采样）在 no-TCN 口径 +0.024（均值 0.473），
-  单模型 0.449 为保守估计。
-
-阈值 --thr 可覆盖 config.json 中位 0.717。训练/复现见主仓库 README（复现命令即
-默认单模型模式 = 干净协议）。
-
-旧版推理（检测即排序 + FD 深度模型，对照系统）存档：predict_legacy.py。
+仓库完整协议、逐折指标和开发时间线见根目录 `README.md` 与 `docs/三阶段重构设计.md`。
+遗留的 `predict.py`/`predict_legacy.py` 仅作旧滑窗/检测即排序对照，不是当前 event-stack
+输入或指标的替代。
