@@ -25,7 +25,7 @@ import numpy as np
 import sklearn
 
 
-PROMOTION_F1_FLOOR = 0.47863247863247865
+PROMOTION_F1_FLOOR = 0.5432098765432098
 _BUNDLE_VERSION = 1
 _ROLES = frozenset(("outer-fold-evidence", "deployment"))
 _METADATA_FILENAMES = frozenset(

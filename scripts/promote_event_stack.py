@@ -41,7 +41,7 @@ from src.pipeline.runner import (
 from src.pipeline.event_stack import DensityConfig, MicroCandidateConfig
 
 
-_REGISTERED_EXPERIMENT_KEY = "a7396a9aa7c38f42"
+_REGISTERED_EXPERIMENT_KEY = "035644cf0889a5dd"
 
 
 def _canonical_mode(values: Sequence[object], name: str) -> object:
@@ -256,7 +256,9 @@ def _validate_current_cache_bindings(
 
 def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunConfig, ...], tuple[Mapping[str, object], ...]]:
     if summary.get("experiment_key") != _REGISTERED_EXPERIMENT_KEY:
-        raise PromotionContractError("summary is not the registered promotion summary a7396a9aa7c38f42")
+        raise PromotionContractError(
+            f"summary is not the registered promotion summary {_REGISTERED_EXPERIMENT_KEY}"
+        )
     raw_configs = summary.get("run_configs")
     folds = summary.get("folds")
     if not isinstance(raw_configs, list) or not isinstance(folds, list) or len(raw_configs) != 5 or len(folds) != 5:
@@ -265,7 +267,9 @@ def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunCo
     if len(configs) != 5 or tuple(item.outer_fold for item in configs) != (0, 1, 2, 3, 4):
         raise PromotionContractError("registered summary must provide exactly outer folds 0 through 4")
     if experiment_key(configs) != _REGISTERED_EXPERIMENT_KEY:
-        raise PromotionContractError("registered summary configurations do not reproduce experiment key a7396a9aa7c38f42")
+        raise PromotionContractError(
+            f"registered summary configurations do not reproduce experiment key {_REGISTERED_EXPERIMENT_KEY}"
+        )
     if any(not config.micro_enabled or not config.candidate_control_enabled or config.no_tcn is not True for config in configs):
         raise PromotionContractError("registered summary is not the frozen CPU multiscale candidate-control configuration")
     by_fold = {item.outer_fold: item for item in configs}

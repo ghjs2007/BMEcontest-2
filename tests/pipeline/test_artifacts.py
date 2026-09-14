@@ -75,7 +75,7 @@ def test_registered_filesystem_trainer_refuses_any_summary_other_than_the_locked
 
     with pytest.raises(PromotionContractError, match="registered promotion summary"):
         registered_filesystem_trainer({
-            "experiment_key": "not-a7396a9aa7c38f42",
+            "experiment_key": "not-035644cf0889a5dd",
             "outer_metrics": {"f1": 0.9},
             "folds": [{"outer_fold": fold, "config_hash": str(fold)} for fold in range(5)],
             "run_configs": [],
@@ -90,14 +90,15 @@ def _registered_promotion_fixture(tmp_path: Path, monkeypatch):
         RunConfig(
             outer_fold=fold,
             inner_splits=4,
-            workers=0,
+            workers=5,
             micro_enabled=True,
             candidate_control_enabled=True,
+            admission_minimum_recall=0.80,
             density=DensityConfig(window_threshold=0.28838),
         )
         for fold in range(5)
     )
-    assert experiment_key(configs) == "a7396a9aa7c38f42"
+    assert experiment_key(configs) == "035644cf0889a5dd"
     input_file = tmp_path / "registered-input.npz"
     input_file.write_bytes(b"registered-input")
     results = []

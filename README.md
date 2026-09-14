@@ -165,7 +165,7 @@ v3/v2/v1：TCN 分融合、复核负样本、时刻先验等演进。
 
 对照系统（FD 预训练微调 + proposal 解码，eligible 校正）均值 ~0.27。
 该对照系统的逐折诊断产物已在发布清理中移除；结果作为历史基线保留，当前正式证据以
-`outputs/crossfit/summary_a7396a9aa7c38f42.json` 及其 5 个逐折 JSON 为准。
+`outputs/crossfit/summary_035644cf0889a5dd.json` 及其 5 个逐折 JSON 为准。
 
 ### 5.5 正式 locked nested 基线（2026-09-08）
 
@@ -289,31 +289,31 @@ train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
 声明。未来只能通过代码内显式、审计过的注册协议添加设备实现；CPU/CUDA 输出相近本身不能证明实际
 在 CUDA 上执行。
 
-### 5.10 当前严格最佳：候选控制 + Logistic/LightGBM blend（2026-09-13）
+### 5.10 当前严格最佳：候选控制 + Logistic/LightGBM blend（2026-09-14）
 
-实验 key 为 `a7396a9aa7c38f42`。这是一次严格五折、四路 inner subject-disjoint OOF 选择后的
-开发证据；它比旧微窗并集结果 `0.4786324786`（112/153、315 个预测、203 个 FP）提升，
-但仍不是 untouched 测试集泛化估计。旧结果的 raw union 为 3,413，现版本 admission 后为
-310（每折 admission 上限实际为 62/56/64/64/64），全目标域 deployment 训练使用五个
+实验 key 为 `035644cf0889a5dd`。这是一次严格五折、四路 inner subject-disjoint OOF 选择后的
+开发证据；相对上一版 `0.5432098765`，唯一注册改动是把 inner OOF admission 最低候选
+召回约束从 0.88 降至 0.80，使门控可以拒绝更多低质量候选。它仍不是 untouched 测试集
+泛化估计。raw union 为 3,413，现版本 admission 后为 299，全目标域 deployment 使用五个
 outer-validation 分区的合法并集（不是把 outer 标签回灌到选择过程）。
 
 | fold | config hash | micro 阈值 | blend | admission (IoU/阈值/cap) | raw/admitted | TP/eligible/pred | F1 | candidate recall | final short recall |
 |---|---|---:|---:|---|---:|---:|---:|---:|---:|
-| 0 | `11ce99015e46ef2d` | 0.10 | 0.75 | 0.3/0.2/8 | 713/62 | 14/23/26 | 0.5714285714 | 16/23 | 1/7 |
-| 1 | `96a0966d51b3199e` | 0.20 | 0.75 | 0.3/0.2/8 | 726/56 | 26/31/56 | 0.5977011494 | 26/31 | 3/4 |
-| 2 | `db3c521d292511dd` | 0.10 | 0.75 | 0.3/0.2/8 | 644/64 | 18/27/52 | 0.4556962025 | 18/27 | 4/8 |
-| 3 | `ccf3f7e5efb116e7` | 0.10 | 0.75 | 0.3/0.2/8 | 710/64 | 25/32/61 | 0.5376344086 | 27/32 | 7/13 |
-| 4 | `ee97b02b839f203e` | 0.10 | 1.00 | 0.3/0.2/8 | 620/64 | 27/40/57 | 0.5567010309 | 30/40 | 3/7 |
-| **聚合** | — | — | — | — | **3413/310** | **110/153/252** | **0.5432098765** | **117/153=0.7647058824** | **18/39=0.4615384615** |
+| 0 | `7e16f906c79cb8a6` | 0.10 | 0.75 | 0.3/0.35/8 | 713/60 | 14/23/26 | 0.5714285714 | 16/23 | 1/7 |
+| 1 | `1f690edb16c70372` | 0.20 | 0.50 | 0.3/0.2/8 | 726/56 | 27/31/56 | 0.6206896552 | 27/31 | 4/4 |
+| 2 | `da02d2581f5b4f95` | 0.10 | 0.75 | 0.3/0.5/8 | 644/55 | 18/27/52 | 0.4556962025 | 18/27 | 4/8 |
+| 3 | `e165f585d47eba6e` | 0.10 | 0.25 | 0.3/0.2/8 | 710/64 | 24/32/57 | 0.5393258427 | 27/32 | 8/13 |
+| 4 | `85cd9c33d4f0e9b9` | 0.10 | 0.50 | 0.3/0.2/8 | 620/64 | 26/40/46 | 0.6046511628 | 30/40 | 2/7 |
+| **聚合** | — | — | — | — | **3413/299** | **109/153/237** | **0.5589743590** | **118/153=0.7712418301** | **19/39=0.4871794872** |
 
-聚合 PPV 为 `0.4365079365`（FP=142），recall 为 `0.7189542484`；raw union 为 3,413，
-micro candidates 为 2,773，admission 后候选为 310。相比旧 `0.4786324786`（TP=112、
-pred=315、FP=203），F1 提升 `+0.0645773979`，PPV 和候选负担均改善。它未通过推荐默认门：
-短餐最终 recall 仅 `18/39=0.4615384615`（推荐门 `≥0.65`）；candidate short recall
-为 `0.5384615385`，且项目目标 `F1≥0.65` 尚未达到。因此状态为“已固化的严格改进、
+聚合 PPV 为 `0.4599156118`（FP=128），recall 为 `0.7124183007`；micro candidates 为
+2,773。相比上一版 `0.5432098765`（TP=110、pred=252、FP=142），F1 提升
+`+0.0157644824`，以 1 个 TP 换取 14 个 FP 的减少。它未通过推荐默认门：短餐最终 recall
+仅 `19/39=0.4871794872`（推荐门 `≥0.65`）；candidate short recall 为 `0.5641025641`，
+且项目目标 `F1≥0.65` 尚未达到。因此状态为“已固化的严格改进、
 暂不推荐为默认”。
 
-模型路径为 `models/event_stack/a7396a9aa7c38f42/`（5 个 outer-fold、deployment、
+模型路径为 `models/event_stack/035644cf0889a5dd/`（5 个 outer-fold、deployment、
 `promotion_summary.json`、`promotion_attestation.json`），发布包为 `dist/event_stack/`。
 attestation 绑定 canonical summary、严格五折和每个 manifest 的 SHA-256；deployment manifest
 另记录 full-target provenance。输入仍是 63/47/56 维的预计算特征 JSON，不是原始会话；raw-session
@@ -364,11 +364,11 @@ adapter 尚未完成。当前 CPU-only：`auto` 解析 CPU，强制 `gpu/cuda` �
 
 **总结**：当前严格最佳为 event-stack 候选控制/stacking 版本——240s macro 与 15s
 ACC+GYRO micro 全覆盖候选，经同会话 NMS、subject admission，再由 LogisticRegression
-与 LightGBM blend 复核并执行冻结 event policy；严格五折聚合为 **F1 0.5432098765
-（110/153/252，PPV 0.4365079365，recall 0.7189542484）**。严格修复了时间轴类评估伪影
+与 LightGBM blend 复核并执行冻结 event policy；严格五折聚合为 **F1 0.5589743590
+（109/153/237，PPV 0.4599156118，recall 0.7124183007）**。严格修复了时间轴类评估伪影
 与 wbag 跨折受试者泄漏（0.617 作废），并以 eligible 质量审计分母和 nested OOF 保证
-选择隔离。该结果虽已固化并优于旧 0.4786324786，但最终短餐 recall 0.461538（candidate
-short recall 0.538462）未达推荐门
+选择隔离。该结果已固化并优于上一版 0.5432098765，但最终短餐 recall 0.487179（candidate
+short recall 0.564103）未达推荐门
 0.65，F1 也未达项目目标 0.65，故仍标记为开发证据而非最终泛化承诺。
 
 **展望**：
@@ -394,11 +394,11 @@ python scripts/slide_features.py --fold {0..4} --mode meal_train
 python scripts/slide_features.py --fold {0..4} --mode no_meal_train
 python scripts/slide_features.py --fold {0..4} --mode val
 # 3. 正式 locked nested event-stack 评估（当前严格最佳；CPU-only，重复运行复用缓存）
-python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 0 \
-    --micro-enabled --candidate-control-enabled
-# 3a. 晋级与发布（仅当 aggregate F1 严格高于 0.4786324786；当前 key=a7396a9aa7c38f42）
-python scripts/promote_event_stack.py --summary outputs/crossfit/summary_a7396a9aa7c38f42.json
-python scripts/package_event_stack.py --bundle models/event_stack/a7396a9aa7c38f42/deployment \
+python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 5 \
+    --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80
+# 3a. 晋级与发布（当前注册门要求 aggregate F1 严格高于 0.5432098765）
+python scripts/promote_event_stack.py --summary outputs/crossfit/summary_035644cf0889a5dd.json
+python scripts/package_event_stack.py --bundle models/event_stack/035644cf0889a5dd/deployment \
     --destination dist/event_stack
 # 3b. ACC+GYRO 微窗口候选并集消融（当前因候选体积门槛未采纳为默认）
 D:/Anaconda3/envs/bme/python.exe scripts/build_micro_features.py --fold all --split all --workers 8
@@ -445,8 +445,8 @@ Archieves/  Data/   # 历史与原始数据（保留）
   0.478632（112/153/315），但 raw union 3,413 超过 612 候选体积门，保留为历史证据。
 - **当前晋级**：candidate-control spec 固定同会话 NMS、subject admission、LR/LGBM
   blend 和事件策略只在 outer-train 的四路 subject-disjoint OOF 选择；实验 key
-  `a7396a9aa7c38f42` 得到 F1 0.5432098765（110/153/252，FP 142），候选 admission
-  310、raw union 3,413，最终短餐 18/39=0.461538（candidate short recall 0.538462）。F1 提升已固化并生成 5+1 bundle、
+  `035644cf0889a5dd` 得到 F1 0.5589743590（109/153/237，FP 128），候选 admission
+  299、raw union 3,413，最终短餐 19/39=0.487179（candidate short recall 0.564103）。F1 提升已固化并生成 5+1 bundle、
   provenance 与 attestation，但短餐未达推荐门 0.65、F1 未达 0.65，暂不宣称默认最优。
 - **迁移学习路线**：先补齐 raw-session adapter 和短餐/餐时 hard-negative，再在同一
   15s 表示上评估 FD-I/FD-II；必须保留随机初始化、`external_weight=0` 控制，未经许可
