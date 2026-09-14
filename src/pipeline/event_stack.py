@@ -7,6 +7,8 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
+from src.pipeline.context_features import context_v1_features
+
 from src.eval.metrics import event_iou
 
 
@@ -967,7 +969,7 @@ def _context_scores(
     )
 
 
-def multiscale_verifier_features(
+def _legacy_multiscale_verifier_features(
     candidates: Sequence[MultiScaleCandidate],
     macro_windows_by_sid: Mapping[str, Sequence[tuple[int, int, float]]],
     micro_windows_by_sid: Mapping[str, Sequence[tuple[int, int, float]]],
@@ -1032,6 +1034,33 @@ def multiscale_verifier_features(
         rows.append(np.concatenate((macro_block, micro_block)))
     result = np.asarray(rows, dtype=np.float64).reshape((-1, 56))
     return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def multiscale_verifier_features(
+    candidates: Sequence[MultiScaleCandidate],
+    macro_windows_by_sid: Mapping[str, Sequence[tuple[int, int, float]]],
+    micro_windows_by_sid: Mapping[str, Sequence[tuple[int, int, float]]],
+    context_features_version: str | None = None,
+    session_bounds_by_sid: Mapping[str, tuple[int, int]] | None = None,
+) -> np.ndarray:
+    """Build legacy verifier features, optionally appending Context-v1."""
+
+    legacy = _legacy_multiscale_verifier_features(
+        candidates, macro_windows_by_sid, micro_windows_by_sid
+    )
+    if context_features_version is None:
+        return legacy
+    if context_features_version != "v1":
+        raise ValueError("context_features_version must be None or 'v1'")
+    if session_bounds_by_sid is None:
+        raise ValueError("session_bounds_by_sid is required for Context-v1")
+    context = context_v1_features(
+        candidates,
+        macro_windows_by_sid,
+        micro_windows_by_sid,
+        session_bounds_by_sid,
+    )
+    return np.concatenate((legacy, context), axis=1)
 
 
 def aggregate_candidate_features(

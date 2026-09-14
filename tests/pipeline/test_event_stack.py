@@ -439,6 +439,41 @@ def test_multiscale_verifier_one_sample_micro_stream_zeros_score_features():
     assert result[0, 54:56].tolist() == [1.0, 1.0]
 
 
+def test_multiscale_context_disabled_is_identical_to_legacy_fixture():
+    """Disabling Context-v1 must preserve the registered 56-column surface."""
+
+    candidate = MultiScaleCandidate(
+        EventRef("s1", 0, 60_000), None, _candidate("s1", 0, 60_000)
+    )
+    actual = multiscale_verifier_features(
+        [candidate], {}, {"s1": [(0, 15_000, 0.8)]}
+    )
+    expected_legacy_56 = np.asarray(
+        [[*[0.0] * 37, 0.0, 1.0, 1.0, 60.0, *[0.0] * 13, 1.0, 1.0]]
+    )
+
+    assert np.array_equal(actual, expected_legacy_56)
+
+
+def test_multiscale_context_v1_appends_ordered_block_and_preserves_nan():
+    """Context-v1 is an opt-in 60-column append, including meaningful NaNs."""
+
+    candidate = MultiScaleCandidate(
+        EventRef("s1", 0, 60_000), None, _candidate("s1", 0, 60_000)
+    )
+    actual = multiscale_verifier_features(
+        [candidate],
+        {},
+        {"s1": [(0, 15_000, 0.8)]},
+        context_features_version="v1",
+        session_bounds_by_sid={"s1": (0, 120_000)},
+    )
+
+    assert actual.shape == (1, 116)
+    assert np.isnan(actual[:, 56:]).any()
+    assert not np.isinf(actual).any()
+
+
 def test_apply_event_policy_caps_each_subject_after_thresholding():
     candidates = [
         EventRef("session-a", index * 100, index * 100 + 50)

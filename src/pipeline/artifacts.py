@@ -24,6 +24,8 @@ import joblib
 import numpy as np
 import sklearn
 
+from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
+
 
 PROMOTION_F1_FLOOR = 0.5432098765432098
 _BUNDLE_VERSION = 1
@@ -72,6 +74,61 @@ class PromotionContractError(RuntimeError):
     """Promotion cannot proceed without a qualifying, explicit training contract."""
 
 
+def _valid_widths(value: object) -> dict[str, int] | None:
+    if not isinstance(value, Mapping) or set(value) != {"macro", "micro", "verifier"}:
+        return None
+    widths: dict[str, int] = {}
+    for name, width in value.items():
+        if (
+            not isinstance(width, (int, np.integer))
+            or isinstance(width, (bool, np.bool_))
+            or int(width) < 1
+        ):
+            return None
+        widths[str(name)] = int(width)
+    return widths
+
+
+def normalize_feature_schema(value: object) -> dict[str, object]:
+    """Validate schema-v1 width maps and schema-v2 Context-v1 metadata."""
+
+    legacy = _valid_widths(value)
+    if legacy is not None:
+        return legacy
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema_version", "widths", "context"
+    }:
+        raise ValueError("feature_schema must be a v1 width map or a v2 schema object")
+    if value["schema_version"] != 2:
+        raise ValueError("feature_schema version is unsupported")
+    widths = _valid_widths(value["widths"])
+    context = value["context"]
+    if widths is None or not isinstance(context, Mapping) or set(context) != {
+        "version", "columns", "schema_hash"
+    }:
+        raise ValueError("feature_schema v2 is malformed")
+    version = context["version"]
+    columns = context["columns"]
+    schema_hash = context["schema_hash"]
+    if version == "v1":
+        if list(columns) != list(CONTEXT_V1_COLUMNS) or schema_hash != CONTEXT_V1_SCHEMA_HASH:
+            raise ValueError("feature_schema Context-v1 columns or hash are invalid")
+        if widths["verifier"] != 56 + len(CONTEXT_V1_COLUMNS):
+            raise ValueError("feature_schema Context-v1 verifier width is invalid")
+        normalized_context = {
+            "version": "v1",
+            "columns": list(CONTEXT_V1_COLUMNS),
+            "schema_hash": CONTEXT_V1_SCHEMA_HASH,
+        }
+    elif version is None:
+        if columns != [] or schema_hash is not None:
+            raise ValueError("feature_schema without context must have empty context metadata")
+        normalized_context = {"version": None, "columns": [], "schema_hash": None}
+    else:
+        raise ValueError("feature_schema context version is unsupported")
+    return {"schema_version": 2, "widths": widths, "context": normalized_context}
+
+
 @dataclass(frozen=True)
 class EventStackBundle:
     """Fitted models plus immutable inference and evidence metadata."""
@@ -79,7 +136,7 @@ class EventStackBundle:
     models: Mapping[str, object]
     policy: Mapping[str, object]
     run_config: Mapping[str, object]
-    feature_schema: Mapping[str, int]
+    feature_schema: Mapping[str, object]
     metrics: Mapping[str, object]
     source_fingerprints: tuple[Mapping[str, object], ...]
     role: str
@@ -92,14 +149,7 @@ class EventStackBundle:
         for name in self.models:
             if not isinstance(name, str) or not name or Path(name).name != name:
                 raise ValueError("model names must be nonempty file-name components")
-        if any(
-            not isinstance(name, str)
-            or not isinstance(width, (int, np.integer))
-            or isinstance(width, (bool, np.bool_))
-            or int(width) < 1
-            for name, width in self.feature_schema.items()
-        ):
-            raise ValueError("feature_schema must map names to positive integer widths")
+        object.__setattr__(self, "feature_schema", normalize_feature_schema(self.feature_schema))
         fingerprints = self.source_fingerprints
         if not fingerprints or not all(_is_source_fingerprint(item) for item in fingerprints):
             raise ValueError("source_fingerprints must contain canonical present or missing state records")
@@ -263,9 +313,7 @@ def _write_bundle_contents(
         _stable_json_bytes(dict(bundle.run_config))
     )
     (temporary / "feature_schema.json").write_bytes(
-        _stable_json_bytes(
-            {key: int(value) for key, value in bundle.feature_schema.items()}
-        )
+        _stable_json_bytes(bundle.feature_schema)
     )
     files = {
         path.name: _sha256(path)
@@ -358,14 +406,11 @@ def verify_bundle_manifest(
             continue
         metadata[name] = payload
     feature_schema = metadata.get("feature_schema.json")
-    if feature_schema is not None and any(
-        not isinstance(name, str)
-        or not isinstance(width, (int, np.integer))
-        or isinstance(width, (bool, np.bool_))
-        or int(width) < 1
-        for name, width in feature_schema.items()
-    ):
-        problems.append("feature schema must map names to positive integer widths")
+    if feature_schema is not None:
+        try:
+            normalize_feature_schema(feature_schema)
+        except ValueError as exc:
+            problems.append(str(exc))
     if not isinstance(manifest.get("metrics"), dict):
         problems.append("manifest metrics must be an object")
     fingerprints = manifest.get("source_fingerprints")

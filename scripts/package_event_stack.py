@@ -23,6 +23,7 @@ if str(_ROOT) not in sys.path:
 from src.pipeline.artifacts import (
     PROMOTION_F1_FLOOR,
     load_event_stack_bundle,
+    normalize_feature_schema,
     verify_bundle_manifest,
     verify_promotion_attestation,
 )
@@ -246,7 +247,10 @@ def package_event_stack(
         raise ValueError("deployment bundle manifest verification failed: " + "; ".join(problems))
     manifest = json.loads((bundle_path / "manifest.json").read_text(encoding="utf-8"))
     requirements_from_manifest(manifest)
-    load_event_stack_bundle(bundle_path, expected_role="deployment")
+    bundle = load_event_stack_bundle(bundle_path, expected_role="deployment")
+    # Validate the same schema object consumed by the copied standalone runtime
+    # before any files are staged for packaging.
+    normalize_feature_schema(bundle.feature_schema)
     try:
         f1 = float(manifest["metrics"]["f1"])
     except (KeyError, TypeError, ValueError) as exc:

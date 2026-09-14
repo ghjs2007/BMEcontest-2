@@ -19,6 +19,7 @@ from scripts.package_event_stack import (
     required_paths,
 )
 from scripts.predict_event_stack import (
+    _schema_widths,
     build_smoke_fixture,
     predict_feature_payload,
     resolve_device,
@@ -38,6 +39,26 @@ def _fixture_fingerprint() -> dict[str, object]:
 def _schema_hash(schema: dict[str, int]) -> str:
     payload = json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def test_runtime_accepts_context_v1_schema_and_rejects_unknown_versions():
+    """The standalone runtime shares the bundle schema-v2 compatibility gate."""
+
+    from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
+
+    schema = {
+        "schema_version": 2,
+        "widths": {"macro": 63, "micro": 47, "verifier": 116},
+        "context": {
+            "version": "v1",
+            "columns": list(CONTEXT_V1_COLUMNS),
+            "schema_hash": CONTEXT_V1_SCHEMA_HASH,
+        },
+    }
+
+    assert _schema_widths(schema) == {"macro": 63, "micro": 47, "verifier": 116}
+    with pytest.raises(ValueError, match="version is unsupported"):
+        _schema_widths({**schema, "schema_version": 3})
 
 
 def fitted_deployment_bundle() -> EventStackBundle:

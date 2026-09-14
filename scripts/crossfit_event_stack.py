@@ -117,7 +117,7 @@ def parse_middle_fraction(value: str) -> float | None:
     return parsed
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Nested subject-disjoint window and event verification evaluation."
     )
@@ -170,6 +170,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--micro-enabled", action="store_true")
     parser.add_argument(
+        "--context-features",
+        choices=("v1",),
+        default=None,
+        help="append the registered Context-v1 verifier feature block",
+    )
+    parser.add_argument(
+        "--summary-alias",
+        type=Path,
+        help="canonical aggregate-summary copy; must be inside outputs/crossfit",
+    )
+    parser.add_argument(
         "--candidate-control-enabled",
         action="store_true",
         help="enable nested OOF admission and verifier blending (requires --micro-enabled)",
@@ -214,7 +225,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--micro-positive-middle-fraction", type=parse_middle_fraction, default=None,
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def _summary_alias_path(alias: Path | None, output_directory: Path) -> Path | None:
+    """Resolve a requested alias without allowing writes outside crossfit output."""
+
+    if alias is None:
+        return None
+    root = output_directory.resolve()
+    candidate = alias.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("summary alias must be inside outputs/crossfit") from exc
+    if candidate == root:
+        raise ValueError("summary alias must name a file inside outputs/crossfit")
+    return candidate
 
 
 def main() -> int:
@@ -228,6 +255,13 @@ def main() -> int:
         raise SystemExit("--micro-enabled does not support --verifier-features raw_summary")
     if args.candidate_control_enabled and not args.micro_enabled:
         raise SystemExit("--candidate-control-enabled requires --micro-enabled")
+    if args.context_features and not args.micro_enabled:
+        raise SystemExit("--context-features requires --micro-enabled")
+    output_directory = project_config.OUTPUT_DIR / "crossfit"
+    try:
+        summary_alias = _summary_alias_path(args.summary_alias, output_directory)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     fold_indices = range(5) if args.fold == "all" else (int(args.fold),)
     configs = [
         RunConfig(
@@ -241,6 +275,7 @@ def main() -> int:
             verifier_c_grid=args.verifier_c_grid,
             density=DensityConfig(coverage_fix=args.coverage_fix),
             micro_enabled=args.micro_enabled,
+            context_features_version=args.context_features,
             candidate_control_enabled=args.candidate_control_enabled,
             admission_nms_iou_grid=args.admission_nms_iou_grid,
             admission_threshold_grid=args.admission_threshold_grid,
@@ -254,7 +289,6 @@ def main() -> int:
         for fold in fold_indices
     ]
     results = run_folds(configs, workers=args.workers, force=args.force)
-    output_directory = project_config.OUTPUT_DIR / "crossfit"
     for config, result in zip(configs, results):
         output_path = output_directory / (
             f"fold{config.outer_fold}_{result.config_hash}.json"
@@ -278,12 +312,14 @@ def main() -> int:
             f"[{cache_label}]"
         )
         print(f"  output: {output_path}")
-    if args.fold == "all":
+    if args.fold == "all" or summary_alias is not None:
         summary = aggregate_fold_results(configs, results)
         summary["run_configs"] = [asdict(config) for config in configs]
         summary["experiment_key"] = experiment_key(configs)
         summary_path = output_directory / f"summary_{summary['experiment_key']}.json"
         write_json_atomic(summary_path, summary)
+        if summary_alias is not None:
+            write_json_atomic(summary_alias, summary)
         metrics = summary["outer_metrics"]
         print(
             f"all folds: F1={metrics['f1']:.3f} "

@@ -98,7 +98,7 @@ def _registered_promotion_fixture(tmp_path: Path, monkeypatch):
         )
         for fold in range(5)
     )
-    assert experiment_key(configs) == "035644cf0889a5dd"
+    assert experiment_key(configs) == promotion._REGISTERED_EXPERIMENT_KEY
     input_file = tmp_path / "registered-input.npz"
     input_file.write_bytes(b"registered-input")
     results = []
@@ -203,6 +203,45 @@ def fitted_tiny_bundle(
         source_fingerprints=source_fingerprints or (_fixture_fingerprint(),),
         role=role,
     )
+
+
+def test_bundle_round_trip_accepts_versioned_context_v1_schema(tmp_path: Path):
+    """Schema-v2 bundles preserve the ordered Context-v1 runtime contract."""
+
+    from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
+
+    schema = {
+        "schema_version": 2,
+        "widths": {"macro": 63, "micro": 47, "verifier": 116},
+        "context": {
+            "version": "v1",
+            "columns": list(CONTEXT_V1_COLUMNS),
+            "schema_hash": CONTEXT_V1_SCHEMA_HASH,
+        },
+    }
+    bundle = EventStackBundle(
+        **{**fitted_tiny_bundle().__dict__, "feature_schema": schema}
+    )
+    destination = tmp_path / "models" / "event_stack" / "context-v1"
+
+    write_event_stack_bundle(destination, bundle, event_stack_root=destination.parent)
+
+    assert load_event_stack_bundle(destination).feature_schema == schema
+    assert verify_bundle_manifest(destination) == ()
+
+
+def test_bundle_rejects_unknown_feature_schema_versions():
+    with pytest.raises(ValueError, match="version is unsupported"):
+        EventStackBundle(
+            **{
+                **fitted_tiny_bundle().__dict__,
+                "feature_schema": {
+                    "schema_version": 3,
+                    "widths": {"macro": 63, "micro": 47, "verifier": 56},
+                    "context": {"version": None, "columns": [], "schema_hash": None},
+                },
+            }
+        )
 
 
 def test_bundle_round_trip_preserves_predictions_and_manifest(tmp_path: Path):

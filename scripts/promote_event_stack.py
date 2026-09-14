@@ -27,6 +27,7 @@ from src.pipeline.artifacts import (
     PromotionContractError,
     promote_summary,
 )
+from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
 from src.pipeline.runner import (
     FilesystemDataSource,
     RunConfig,
@@ -34,6 +35,7 @@ from src.pipeline.runner import (
     aggregate_fold_results,
     build_full_target_dataset,
     cache_key,
+    expected_feature_dimensions,
     experiment_key,
     fit_full_target_deployment,
     fit_outer_fold_for_promotion,
@@ -41,7 +43,25 @@ from src.pipeline.runner import (
 from src.pipeline.event_stack import DensityConfig, MicroCandidateConfig
 
 
-_REGISTERED_EXPERIMENT_KEY = "035644cf0889a5dd"
+_REGISTERED_CONFIG_IDENTITY = RunConfig(
+    outer_fold=0,
+    inner_splits=4,
+    workers=5,
+    micro_enabled=True,
+    candidate_control_enabled=True,
+    admission_minimum_recall=0.80,
+    density=DensityConfig(window_threshold=0.28838),
+)
+
+
+def _registered_configs() -> tuple[RunConfig, ...]:
+    return tuple(
+        RunConfig(**{**asdict(_REGISTERED_CONFIG_IDENTITY), "outer_fold": fold})
+        for fold in range(5)
+    )
+
+
+_REGISTERED_EXPERIMENT_KEY = experiment_key(_registered_configs())
 
 
 def _canonical_mode(values: Sequence[object], name: str) -> object:
@@ -147,17 +167,49 @@ def _fitted_input_width(model: object, name: str) -> int:
     return width
 
 
-def _validated_feature_schema(fit: object) -> dict[str, int]:
+def _validated_feature_schema(
+    fit: object,
+    config: RunConfig | None = None,
+    *,
+    context_features_version: str | None = None,
+) -> dict[str, object]:
+    """Bind fitted estimators to the configured, versioned feature contract."""
+
+    if config is None:
+        config = RunConfig(
+            outer_fold=0,
+            micro_enabled=True,
+            candidate_control_enabled=True,
+            context_features_version=context_features_version,
+        )
+    elif context_features_version is not None and (
+        context_features_version != config.context_features_version
+    ):
+        raise PromotionContractError(
+            "feature-schema context version differs from the run configuration"
+        )
     models = _model_mapping(fit)
-    schema = {
+    widths = {
         "macro": _fitted_input_width(models["macro"], "macro"),
         "micro": _fitted_input_width(models["micro"], "micro"),
         "verifier": _fitted_input_width(models["verifier_logistic"], "verifier_logistic"),
     }
     lgbm_width = _fitted_input_width(models["verifier_lgbm"], "verifier_lgbm")
-    if schema != {"macro": 63, "micro": 47, "verifier": 56} or lgbm_width != schema["verifier"]:
-        raise PromotionContractError("fitted promotion models do not match the registered 63/47/56 feature schema")
-    return schema
+    expected = expected_feature_dimensions(config)
+    if tuple(widths[name] for name in ("macro", "verifier", "micro")) != expected or lgbm_width != widths["verifier"]:
+        raise PromotionContractError(
+            "fitted promotion models do not match the registered feature schema"
+        )
+    context = (
+        {
+            "version": "v1",
+            "columns": list(CONTEXT_V1_COLUMNS),
+            "schema_hash": CONTEXT_V1_SCHEMA_HASH,
+        }
+        if config.context_features_version == "v1"
+        else {"version": None, "columns": [], "schema_hash": None}
+    )
+    return {"schema_version": 2, "widths": widths, "context": context}
 
 
 def _runtime_policy_from_result(result: object) -> dict[str, object]:
@@ -247,11 +299,13 @@ def _validate_current_cache_bindings(
         raise PromotionContractError("registered promotion source cannot enumerate input files")
     for config, record in zip(configs, records):
         try:
-            current_hash = cache_key(config, (63, 56, 47), input_files(config))
+            current_hash = cache_key(
+                config, expected_feature_dimensions(config), input_files(config)
+            )
         except (OSError, TypeError, ValueError) as exc:
             raise PromotionContractError("registered promotion inputs cannot be fingerprinted") from exc
         if record.get("config_hash") != current_hash:
-            raise PromotionContractError("registered fold evidence does not bind the current files and 63/56/47 schema")
+            raise PromotionContractError("registered fold evidence does not bind the current files and feature schema")
 
 
 def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunConfig, ...], tuple[Mapping[str, object], ...]]:
@@ -270,6 +324,9 @@ def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunCo
         raise PromotionContractError(
             f"registered summary configurations do not reproduce experiment key {_REGISTERED_EXPERIMENT_KEY}"
         )
+    registered_configs = _registered_configs()
+    if configs != registered_configs:
+        raise PromotionContractError("registered summary does not match the registered configuration identity")
     if any(not config.micro_enabled or not config.candidate_control_enabled or config.no_tcn is not True for config in configs):
         raise PromotionContractError("registered summary is not the frozen CPU multiscale candidate-control configuration")
     by_fold = {item.outer_fold: item for item in configs}
@@ -312,7 +369,7 @@ def registered_filesystem_trainer(summary: Mapping[str, object]) -> Mapping[str,
             models=_model_mapping(fit),
             policy=_runtime_policy_from_result(result),
             run_config=asdict(config),
-            feature_schema=_validated_feature_schema(fit),
+            feature_schema=_validated_feature_schema(fit, config),
             metrics=asdict(result.outer_metrics),
             source_fingerprints=_fingerprints(source.input_files(config)),
             role="outer-fold-evidence",
@@ -338,7 +395,7 @@ def registered_filesystem_trainer(summary: Mapping[str, object]) -> Mapping[str,
             "verifier_c": deployment_policy["verifier_c"],
             "fold_configs": [asdict(config) for config in configs],
         },
-        feature_schema=_validated_feature_schema(fit),
+        feature_schema=_validated_feature_schema(fit, configs[0]),
         metrics=aggregate_metrics,
         source_fingerprints=source.deployment_input_state(configs),
         role="deployment",

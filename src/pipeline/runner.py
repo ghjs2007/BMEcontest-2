@@ -166,6 +166,7 @@ class RunConfig:
     verifier_c_grid: tuple[float, ...] = (0.1,)
     density: DensityConfig = field(default_factory=DensityConfig)
     micro_enabled: bool = False
+    context_features_version: str | None = None
     micro_gravity_align: bool = True
     micro_threshold_grid: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
     micro_candidate: MicroCandidateConfig = field(default_factory=MicroCandidateConfig)
@@ -179,6 +180,8 @@ class RunConfig:
     admission_minimum_recall: float = 0.88
 
     def __post_init__(self) -> None:
+        if self.context_features_version not in (None, "v1"):
+            raise ValueError("context_features_version must be None or 'v1'")
         if not isinstance(self.candidate_control_enabled, bool):
             raise ValueError("candidate_control_enabled must be boolean")
         if self.candidate_control_enabled and not self.micro_enabled:
@@ -221,6 +224,27 @@ class RunConfig:
         object.__setattr__(
             self, "admission_minimum_recall", float(self.admission_minimum_recall)
         )
+
+
+def expected_feature_dimensions(
+    config: RunConfig, *, macro_width: int = 63
+) -> tuple[int, ...]:
+    """Return fitted-model widths for one run configuration.
+
+    Filesystem runs use the registered 63-column macro surface. In-memory
+    fixtures can supply their already-derived macro width.
+    """
+
+    if config.micro_enabled:
+        verifier = 56 + (60 if config.context_features_version == "v1" else 0)
+        return macro_width, verifier, 47
+    verifier = 42 if config.density.coverage_fix else 37
+    if config.verifier_feature_mode == "raw_summary":
+        # ``aggregate_candidate_features`` emits five statistics per raw
+        # input column plus two sample-count fields. ``macro_width`` includes
+        # the runner's one-column time prior.
+        verifier += (macro_width - 1) * 5 + 2
+    return macro_width, verifier
 
 
 @dataclass(frozen=True)
@@ -709,6 +733,23 @@ def _windows_by_session(
     return {sid: sorted(rows) for sid, rows in grouped.items()}
 
 
+def _session_bounds_by_sid(*window_groups: Sequence[EventRef]) -> dict[str, tuple[int, int]]:
+    """Return complete raw-session boundaries, never inferred from scores."""
+
+    bounds: dict[str, tuple[int, int]] = {}
+    for windows in window_groups:
+        for window in windows:
+            previous = bounds.get(window.sid)
+            if previous is None:
+                bounds[window.sid] = (window.start_ms, window.end_ms)
+            else:
+                bounds[window.sid] = (
+                    min(previous[0], window.start_ms),
+                    max(previous[1], window.end_ms),
+                )
+    return bounds
+
+
 def _candidate_labels(
     candidates: Sequence[CandidateEvent | MultiScaleCandidate], truths: Sequence[EventRef]
 ) -> np.ndarray:
@@ -930,7 +971,14 @@ def _execute_outer_dataset(
         )
         train_candidates = union_candidates(raw_train_candidates, raw_micro_train_candidates)
         train_candidate_features = multiscale_verifier_features(
-            train_candidates, oof_windows, micro_oof_windows
+            train_candidates,
+            oof_windows,
+            micro_oof_windows,
+            context_features_version=config.context_features_version,
+            session_bounds_by_sid=_session_bounds_by_sid(
+                data_source.candidate_train.windows,
+                micro_candidates_batch.windows,
+            ),
         )
         micro_oof_seconds = time.perf_counter() - stage_started
     else:
@@ -1202,7 +1250,14 @@ def _execute_outer_dataset(
             raw_validation_candidates, raw_micro_validation_candidates
         )
         validation_candidate_features = multiscale_verifier_features(
-            validation_candidates, validation_windows, micro_validation_windows
+            validation_candidates,
+            validation_windows,
+            micro_validation_windows,
+            context_features_version=config.context_features_version,
+            session_bounds_by_sid=_session_bounds_by_sid(
+                data_source.validation.windows,
+                micro_validation.windows,
+            ),
         )
     else:
         validation_candidates, validation_candidate_features = _candidate_matrix(
@@ -1295,9 +1350,14 @@ def _execute_outer_dataset(
         validation_candidate_events,
         data_source.validation_truth_slices.get("duration_lt10", ()),
     ) if config.micro_enabled else None
-    feature_dimensions = (train_features.shape[1], train_candidate_features.shape[1])
+    observed_dimensions = (train_features.shape[1], train_candidate_features.shape[1])
     if config.micro_enabled:
-        feature_dimensions += (micro_train_features.shape[1],)
+        observed_dimensions += (micro_train_features.shape[1],)
+    feature_dimensions = expected_feature_dimensions(
+        config, macro_width=train_features.shape[1]
+    )
+    if observed_dimensions != feature_dimensions:
+        raise ValueError("fitted feature dimensions do not match the run configuration")
     config_hash = cache_key(
         config,
         feature_dimensions=feature_dimensions,
@@ -1472,9 +1532,20 @@ def fit_full_target_deployment(
     )
     if not candidates:
         raise ValueError("full-target deployment fit produced no candidates")
-    candidate_features = multiscale_verifier_features(candidates, macro_windows, micro_windows)
-    if candidate_features.shape[1] != 56:
-        raise ValueError("full-target deployment verifier features must have 56 columns")
+    candidate_features = multiscale_verifier_features(
+        candidates,
+        macro_windows,
+        micro_windows,
+        context_features_version=config.context_features_version,
+        session_bounds_by_sid=_session_bounds_by_sid(
+            data.candidate_train.windows,
+            data.micro_candidate_train.windows,
+        ),
+    )
+    if candidate_features.shape[1] != expected_feature_dimensions(config)[1]:
+        raise ValueError(
+            "full-target deployment verifier features do not match the configured width"
+        )
     _validate_imputable_features(
         candidate_features,
         "full-target deployment verifier features",
@@ -2040,13 +2111,7 @@ def run_outer_fold(
     if not isinstance(source, FilesystemDataSource):
         raise TypeError("data_source must be FoldDataset or FilesystemDataSource")
     input_files = source.input_files(config)
-    verifier_dimensions = 42 if config.density.coverage_fix else 37
-    if config.verifier_feature_mode == "raw_summary":
-        verifier_dimensions += 312
-    dimensions = (63, verifier_dimensions)
-    if config.micro_enabled:
-        dimensions = (63, 56, 47)
-    key = cache_key(config, dimensions, input_files)
+    key = cache_key(config, expected_feature_dimensions(config), input_files)
     cached_path = source.cache_directory / f"fold{config.outer_fold}_{key}.json"
     if cached_path.exists() and not force:
         cached = _fold_result_from_dict(

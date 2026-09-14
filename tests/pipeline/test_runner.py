@@ -1,4 +1,5 @@
 from dataclasses import asdict, replace
+from types import SimpleNamespace
 import json
 import os
 import hashlib
@@ -16,9 +17,51 @@ from src.pipeline.runner import (
     RunConfig,
     WindowBatch,
     cache_key,
+    expected_feature_dimensions,
+    experiment_key,
     run_outer_fold,
     validate_outer_isolation,
 )
+
+
+def test_context_version_changes_experiment_and_fold_cache_keys(tmp_path: Path):
+    """Context feature selection is part of experiment and cache identity."""
+
+    input_file = tmp_path / "input.npz"
+    input_file.write_bytes(b"fixture")
+    base = RunConfig(outer_fold=0, micro_enabled=True, candidate_control_enabled=True)
+    context = replace(base, context_features_version="v1")
+
+    assert experiment_key([replace(base, outer_fold=index) for index in range(5)]) != experiment_key(
+        [replace(context, outer_fold=index) for index in range(5)]
+    )
+    assert expected_feature_dimensions(base) == (63, 56, 47)
+    assert expected_feature_dimensions(context) == (63, 116, 47)
+    assert cache_key(base, expected_feature_dimensions(base), (input_file,)) != cache_key(
+        context, expected_feature_dimensions(context), (input_file,)
+    )
+
+
+def test_promoted_context_schema_records_columns_and_hash():
+    """Promotion records the ordered Context-v1 extraction contract."""
+
+    from scripts.promote_event_stack import _validated_feature_schema
+    from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
+
+    context_fit = SimpleNamespace(
+        macro=SimpleNamespace(n_features_in_=63),
+        micro=SimpleNamespace(n_features_in_=47),
+        verifier_logistic=SimpleNamespace(n_features_in_=116),
+        verifier_lgbm=SimpleNamespace(n_features_in_=116),
+    )
+
+    schema = _validated_feature_schema(context_fit, context_features_version="v1")
+
+    assert schema["schema_version"] == 2
+    assert schema["widths"]["verifier"] == 116
+    assert schema["context"]["version"] == "v1"
+    assert schema["context"]["columns"] == list(CONTEXT_V1_COLUMNS)
+    assert schema["context"]["schema_hash"] == CONTEXT_V1_SCHEMA_HASH
 
 
 def test_cache_key_changes_with_candidate_semantics():
@@ -349,7 +392,11 @@ def test_full_target_fit_imputes_missing_values_without_changing_model_schema():
         },
     )
 
-    assert _validated_feature_schema(fit) == {"macro": 63, "micro": 47, "verifier": 56}
+    assert _validated_feature_schema(fit) == {
+        "schema_version": 2,
+        "widths": {"macro": 63, "micro": 47, "verifier": 56},
+        "context": {"version": None, "columns": [], "schema_hash": None},
+    }
 
 
 def test_full_target_dataset_rejects_duplicate_or_nonmember_slice_truths():
@@ -1066,6 +1113,46 @@ def test_cli_all_writes_multiscale_configs_fold_outputs_and_summary(tmp_path, mo
     assert summaries[0].stem == f"summary_{cli.experiment_key(recorded_configs)}"
     assert summary["experiment_key"] == cli.experiment_key(recorded_configs)
     assert not list(output.glob("*.tmp"))
+
+
+def test_cli_context_v1_propagates_and_writes_requested_summary_alias(tmp_path, monkeypatch):
+    """Context selection and an in-root summary alias are both run contracts."""
+
+    from scripts import crossfit_event_stack as cli
+
+    alias = tmp_path / "crossfit" / "registered-summary.json"
+    monkeypatch.setattr(sys, "argv", [
+        "crossfit", "--fold", "0", "--micro-enabled", "--context-features", "v1",
+        "--summary-alias", str(alias),
+    ])
+    monkeypatch.setattr(cli.project_config, "OUTPUT_DIR", tmp_path)
+    recorded = []
+    monkeypatch.setattr(
+        cli,
+        "run_folds",
+        lambda configs, workers, force: recorded.extend(configs) or [
+            replace(aggregate_test_results()[0], config_hash="context-v1")
+        ],
+    )
+
+    assert cli.main() == 0
+    assert recorded[0].context_features_version == "v1"
+    summary = json.loads(alias.read_text(encoding="utf-8"))
+    canonical = tmp_path / "crossfit" / f"summary_{summary['experiment_key']}.json"
+    assert alias.read_bytes() == canonical.read_bytes()
+
+
+def test_cli_refuses_summary_alias_outside_crossfit_before_training(tmp_path, monkeypatch):
+    from scripts import crossfit_event_stack as cli
+
+    monkeypatch.setattr(sys, "argv", [
+        "crossfit", "--summary-alias", str(tmp_path / "elsewhere.json"),
+    ])
+    monkeypatch.setattr(cli.project_config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cli, "run_folds", lambda *args, **kwargs: pytest.fail("alias reached training"))
+
+    with pytest.raises(SystemExit, match="inside outputs/crossfit"):
+        cli.main()
 
 
 @pytest.mark.parametrize("arguments,message", [
