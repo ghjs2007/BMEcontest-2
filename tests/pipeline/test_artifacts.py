@@ -22,7 +22,7 @@ from src.pipeline.artifacts import (
     write_event_stack_bundle,
 )
 from src.pipeline.event_stack import DensityConfig, EventMetrics
-from src.pipeline.runner import FoldResult, RunConfig, aggregate_fold_results, cache_key, experiment_key, fold_result_to_dict
+from src.pipeline.runner import FoldResult, RunConfig, aggregate_fold_results, cache_key, expected_feature_dimensions, experiment_key, fold_result_to_dict
 
 
 def _promotion_policy_record(**overrides):
@@ -82,7 +82,9 @@ def test_registered_filesystem_trainer_refuses_any_summary_other_than_the_locked
         })
 
 
-def _registered_promotion_fixture(tmp_path: Path, monkeypatch):
+def _registered_promotion_fixture(
+    tmp_path: Path, monkeypatch, *, context_features_version: str | None = None
+):
     """Create five attested records without touching repository results."""
     import scripts.promote_event_stack as promotion
 
@@ -93,12 +95,13 @@ def _registered_promotion_fixture(tmp_path: Path, monkeypatch):
             workers=5,
             micro_enabled=True,
             candidate_control_enabled=True,
+            context_features_version=context_features_version,
             admission_minimum_recall=0.80,
             density=DensityConfig(window_threshold=0.28838),
         )
         for fold in range(5)
     )
-    assert experiment_key(configs) == promotion._REGISTERED_EXPERIMENT_KEY
+    assert experiment_key(configs) in promotion._REGISTERED_EXPERIMENTS
     input_file = tmp_path / "registered-input.npz"
     input_file.write_bytes(b"registered-input")
     results = []
@@ -106,11 +109,11 @@ def _registered_promotion_fixture(tmp_path: Path, monkeypatch):
     for config in configs:
         metrics = EventMetrics(2, 3, 3, 2 / 3, 2 / 3, 2 / 3)
         result = FoldResult(
-            config_hash=cache_key(config, (63, 56, 47), (input_file,)),
+            config_hash=cache_key(config, expected_feature_dimensions(config), (input_file,)),
             threshold=0.6,
             max_events_per_subject=None,
             verifier_c=0.1,
-            verifier_feature_count=56,
+            verifier_feature_count=expected_feature_dimensions(config)[1],
             inner_metrics=metrics,
             outer_metrics=metrics,
             candidate_count=4,
@@ -174,6 +177,28 @@ def test_registered_trainer_rejects_summary_or_evidence_tampering_before_any_wri
     with pytest.raises(PromotionContractError):
         promotion.registered_filesystem_trainer(summary)
     assert not output_root.exists()
+
+
+def test_context_v1_registered_summary_identity_accepts_attested_folds_and_rejects_tampering(
+    tmp_path: Path, monkeypatch
+):
+    """The registry admits the exact Context-v1 experiment, not nearby configs."""
+
+    promotion, summary, records = _registered_promotion_fixture(
+        tmp_path, monkeypatch, context_features_version="v1"
+    )
+
+    configs, evidence = promotion._registered_fold_records(summary)
+    assert all(config.context_features_version == "v1" for config in configs)
+    assert len(evidence) == 5
+
+    evidence_path = tmp_path / "outputs" / "crossfit" / f"fold0_{records[0]['config_hash']}.json"
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    payload["run_config"]["context_features_version"] = None
+    evidence_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PromotionContractError, match="run configuration differs"):
+        promotion._registered_fold_records(summary)
 
 
 def _fixture_fingerprint() -> dict[str, object]:

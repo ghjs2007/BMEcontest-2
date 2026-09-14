@@ -70,6 +70,7 @@ from src.pipeline.event_stack import (
     verifier_features,
     union_candidates,
 )
+from src.pipeline.context_features import CONTEXT_V1_COLUMNS
 
 
 WINDOW_MODEL_PARAMETERS = {
@@ -236,7 +237,11 @@ def expected_feature_dimensions(
     """
 
     if config.micro_enabled:
-        verifier = 56 + (60 if config.context_features_version == "v1" else 0)
+        verifier = 56 + (
+            len(CONTEXT_V1_COLUMNS)
+            if config.context_features_version == "v1"
+            else 0
+        )
         return macro_width, verifier, 47
     verifier = 42 if config.density.coverage_fix else 37
     if config.verifier_feature_mode == "raw_summary":
@@ -304,6 +309,9 @@ class FoldDataset:
     validation_truths: tuple[EventRef, ...]
     subject_by_session: Mapping[str, str]
     outer_subjects: frozenset[str]
+    # Filesystem datasets carry index.csv's authoritative acquisition bounds.
+    # ``None`` is only the in-memory test-fixture compatibility path.
+    session_bounds_by_sid: Mapping[str, tuple[int, int]] | None = None
     validation_truth_slices: Mapping[str, tuple[EventRef, ...]] = field(
         default_factory=dict
     )
@@ -455,6 +463,7 @@ def build_full_target_dataset(
     seen_sessions: set[str] = set()
     seen_truths: set[tuple[str, int, int]] = set()
     subject_by_session: dict[str, str] = {}
+    session_bounds_by_sid: dict[str, tuple[int, int]] | None = {}
     for partition in partitions:
         validation_sids, validation_subjects = _validate_full_target_partition(partition)
         overlap = seen_subjects & validation_subjects
@@ -468,6 +477,22 @@ def build_full_target_dataset(
             existing = subject_by_session.setdefault(sid, subject)
             if existing != subject:
                 raise ValueError("session-to-subject mapping changed across held-out partitions")
+        if session_bounds_by_sid is not None:
+            if partition.session_bounds_by_sid is None:
+                session_bounds_by_sid = None
+            else:
+                missing_bounds = validation_sids - set(partition.session_bounds_by_sid)
+                if missing_bounds:
+                    raise ValueError(
+                        "held-out validation sessions are missing authoritative bounds: "
+                        + ", ".join(sorted(missing_bounds))
+                    )
+                session_bounds_by_sid.update(
+                    {
+                        sid: partition.session_bounds_by_sid[sid]
+                        for sid in validation_sids
+                    }
+                )
         for truth in partition.validation_truths:
             key = (truth.sid, truth.start_ms, truth.end_ms)
             if key in seen_truths:
@@ -507,6 +532,7 @@ def build_full_target_dataset(
         validation_truths=truths,
         subject_by_session=subject_by_session,
         outer_subjects=frozenset(seen_subjects),
+        session_bounds_by_sid=session_bounds_by_sid,
         validation_truth_slices={name: tuple(values) for name, values in sorted(slices.items())},
         micro_window_train=micro_validation,
         micro_candidate_train=micro_validation,
@@ -733,8 +759,10 @@ def _windows_by_session(
     return {sid: sorted(rows) for sid, rows in grouped.items()}
 
 
-def _session_bounds_by_sid(*window_groups: Sequence[EventRef]) -> dict[str, tuple[int, int]]:
-    """Return complete raw-session boundaries, never inferred from scores."""
+def _test_only_session_bounds_by_sid(
+    *window_groups: Sequence[EventRef],
+) -> dict[str, tuple[int, int]]:
+    """Compatibility bounds for synthetic in-memory fixtures only."""
 
     bounds: dict[str, tuple[int, int]] = {}
     for windows in window_groups:
@@ -747,6 +775,26 @@ def _session_bounds_by_sid(*window_groups: Sequence[EventRef]) -> dict[str, tupl
                     min(previous[0], window.start_ms),
                     max(previous[1], window.end_ms),
                 )
+    return bounds
+
+
+def _context_session_bounds(
+    data_source: FoldDataset,
+    candidates: Sequence[MultiScaleCandidate],
+    *window_groups: Sequence[EventRef],
+) -> Mapping[str, tuple[int, int]]:
+    """Return authoritative bounds, with a clearly isolated fixture fallback."""
+
+    if data_source.session_bounds_by_sid is None:
+        return _test_only_session_bounds_by_sid(*window_groups)
+    bounds = data_source.session_bounds_by_sid
+    candidate_sids = {candidate.event.sid for candidate in candidates}
+    missing = candidate_sids - set(bounds)
+    if missing:
+        raise ValueError(
+            "authoritative session bounds are missing candidate sessions: "
+            + ", ".join(sorted(missing))
+        )
     return bounds
 
 
@@ -975,7 +1023,9 @@ def _execute_outer_dataset(
             oof_windows,
             micro_oof_windows,
             context_features_version=config.context_features_version,
-            session_bounds_by_sid=_session_bounds_by_sid(
+            session_bounds_by_sid=_context_session_bounds(
+                data_source,
+                train_candidates,
                 data_source.candidate_train.windows,
                 micro_candidates_batch.windows,
             ),
@@ -1254,7 +1304,9 @@ def _execute_outer_dataset(
             validation_windows,
             micro_validation_windows,
             context_features_version=config.context_features_version,
-            session_bounds_by_sid=_session_bounds_by_sid(
+            session_bounds_by_sid=_context_session_bounds(
+                data_source,
+                validation_candidates,
                 data_source.validation.windows,
                 micro_validation.windows,
             ),
@@ -1537,7 +1589,9 @@ def fit_full_target_deployment(
         macro_windows,
         micro_windows,
         context_features_version=config.context_features_version,
-        session_bounds_by_sid=_session_bounds_by_sid(
+        session_bounds_by_sid=_context_session_bounds(
+            data,
+            candidates,
             data.candidate_train.windows,
             data.micro_candidate_train.windows,
         ),
@@ -1864,6 +1918,15 @@ class FilesystemDataSource:
             str(row["session_id"]): str(row["externalid"])
             for _, row in index.iterrows()
         }
+        session_bounds_by_sid = {
+            str(row["session_id"]): (
+                int(row["timeStamp.startTime"]),
+                int(row["timeStamp.endTime"]),
+            )
+            for _, row in index.iterrows()
+        }
+        if any(end < start for start, end in session_bounds_by_sid.values()):
+            raise ValueError("sensor index contains unordered session bounds")
         train_sids = {window.sid for window in candidate_train.windows}
         validation_sids = {window.sid for window in validation.windows}
         train_truths, _ = self._eligible_truths(
@@ -1883,6 +1946,7 @@ class FilesystemDataSource:
             validation_truths=validation_truths,
             subject_by_session=subject_by_session,
             outer_subjects=outer_subjects,
+            session_bounds_by_sid=session_bounds_by_sid,
             validation_truth_slices=validation_slices,
             micro_window_train=micro_batches.get("train"),
             micro_candidate_train=micro_batches.get("candidate_train"),

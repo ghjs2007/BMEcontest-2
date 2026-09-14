@@ -639,6 +639,26 @@ def test_filesystem_source_loads_optional_micro_splits_and_extraction_time(files
     }
 
 
+def test_filesystem_context_coverage_uses_authoritative_session_bounds(filesystem_runner_source):
+    """Sparse sampled windows must not shrink Context-v1's session universe."""
+
+    from src.pipeline.context_features import CONTEXT_V1_COLUMNS, context_v1_features
+
+    dataset = filesystem_runner_source.load_outer_fold(
+        RunConfig(outer_fold=0, micro_enabled=True)
+    )
+    candidate = EventRef("s3", 300_000, 420_000)
+    features = context_v1_features(
+        [candidate],
+        {"s3": [(150_000, 390_000, 0.9)]},
+        {},
+        dataset.session_bounds_by_sid,
+    )
+
+    assert dataset.session_bounds_by_sid["s3"] == (0, 600_000)
+    assert features[0, CONTEXT_V1_COLUMNS.index("macro_pre_coverage")] == pytest.approx(1 / 20)
+
+
 @pytest.fixture
 def filesystem_source_with_orphan_micro_sessions(filesystem_runner_source):
     from src.data import manifests

@@ -9,7 +9,7 @@ five-fold experiment has passed its strict gate.
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 import json
 import math
@@ -54,13 +54,24 @@ _REGISTERED_CONFIG_IDENTITY = RunConfig(
 )
 
 
-def _registered_configs() -> tuple[RunConfig, ...]:
+def _registered_configs(
+    context_features_version: str | None = None,
+) -> tuple[RunConfig, ...]:
     return tuple(
-        RunConfig(**{**asdict(_REGISTERED_CONFIG_IDENTITY), "outer_fold": fold})
+        replace(
+            _REGISTERED_CONFIG_IDENTITY,
+            outer_fold=fold,
+            context_features_version=context_features_version,
+        )
         for fold in range(5)
     )
 
 
+_REGISTERED_EXPERIMENTS = {
+    experiment_key(configs): configs
+    for configs in (_registered_configs(), _registered_configs("v1"))
+}
+# Retain the legacy symbol for callers/tests that identify the baseline run.
 _REGISTERED_EXPERIMENT_KEY = experiment_key(_registered_configs())
 
 
@@ -309,9 +320,11 @@ def _validate_current_cache_bindings(
 
 
 def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunConfig, ...], tuple[Mapping[str, object], ...]]:
-    if summary.get("experiment_key") != _REGISTERED_EXPERIMENT_KEY:
+    summary_key = summary.get("experiment_key")
+    registered_configs = _REGISTERED_EXPERIMENTS.get(summary_key)
+    if registered_configs is None:
         raise PromotionContractError(
-            f"summary is not the registered promotion summary {_REGISTERED_EXPERIMENT_KEY}"
+            "summary is not a registered promotion summary"
         )
     raw_configs = summary.get("run_configs")
     folds = summary.get("folds")
@@ -320,11 +333,10 @@ def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunCo
     configs = tuple(sorted((_config_from_summary(item) for item in raw_configs if isinstance(item, Mapping)), key=lambda item: item.outer_fold))
     if len(configs) != 5 or tuple(item.outer_fold for item in configs) != (0, 1, 2, 3, 4):
         raise PromotionContractError("registered summary must provide exactly outer folds 0 through 4")
-    if experiment_key(configs) != _REGISTERED_EXPERIMENT_KEY:
+    if experiment_key(configs) != summary_key:
         raise PromotionContractError(
-            f"registered summary configurations do not reproduce experiment key {_REGISTERED_EXPERIMENT_KEY}"
+            "registered summary configurations do not reproduce its experiment key"
         )
-    registered_configs = _registered_configs()
     if configs != registered_configs:
         raise PromotionContractError("registered summary does not match the registered configuration identity")
     if any(not config.micro_enabled or not config.candidate_control_enabled or config.no_tcn is not True for config in configs):
