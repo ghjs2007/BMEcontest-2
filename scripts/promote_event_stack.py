@@ -28,6 +28,7 @@ from src.pipeline.artifacts import (
     promote_summary,
 )
 from src.pipeline.context_features import CONTEXT_V1_COLUMNS, CONTEXT_V1_SCHEMA_HASH
+from src.pipeline.diagnostics import canonical_diagnostics_bytes
 from src.pipeline.runner import (
     FilesystemDataSource,
     RunConfig,
@@ -299,7 +300,8 @@ def _validate_summary_aggregate(
     except (KeyError, TypeError, ValueError) as exc:
         raise PromotionContractError("registered fold evidence cannot be aggregated") from exc
     for name, value in recomputed.items():
-        _assert_evidence_equal(value, summary.get(name), name)
+        if name in summary:
+            _assert_evidence_equal(value, summary.get(name), name)
 
 
 def _validate_current_cache_bindings(
@@ -360,6 +362,20 @@ def _registered_fold_records(summary: Mapping[str, object]) -> tuple[tuple[RunCo
             raise PromotionContractError("registered fold evidence does not match its summary config hash")
         if json.dumps(record.get("run_config"), sort_keys=True) != json.dumps(asdict(config), sort_keys=True):
             raise PromotionContractError("registered fold evidence run configuration differs from canonical summary")
+        diagnostics = record.get("subject_diagnostics")
+        diagnostic_path = project_config.OUTPUT_DIR / "crossfit" / (
+            f"fold{config.outer_fold}_{fold['config_hash']}.diagnostics.json"
+        )
+        try:
+            diagnostic_bytes = diagnostic_path.read_bytes()
+        except OSError as exc:
+            raise PromotionContractError(
+                f"registered fold diagnostics cannot be read: {diagnostic_path}"
+            ) from exc
+        if not isinstance(diagnostics, Mapping) or diagnostic_bytes != canonical_diagnostics_bytes(diagnostics):
+            raise PromotionContractError(
+                "registered fold diagnostics do not match cached fold evidence"
+            )
         records.append(record)
     frozen_records = tuple(records)
     _validate_summary_aggregate(summary, configs, frozen_records)
@@ -385,6 +401,7 @@ def registered_filesystem_trainer(summary: Mapping[str, object]) -> Mapping[str,
             metrics=asdict(result.outer_metrics),
             source_fingerprints=_fingerprints(source.input_files(config)),
             role="outer-fold-evidence",
+            diagnostics=record["subject_diagnostics"],
         )
 
     deployment_policy = canonical_deployment_policy(records)

@@ -24,6 +24,88 @@ from src.pipeline.runner import (
 )
 
 
+def test_subject_diagnostics_zero_and_undefined_contract():
+    """Subjects with no truth are excluded; zero-match subjects remain zeros."""
+
+    from src.pipeline.diagnostics import subject_diagnostics
+
+    result = subject_diagnostics(
+        predictions=(
+            EventRef("match", 0, 10),
+            EventRef("negative", 0, 10),
+        ),
+        truths=(
+            EventRef("match", 100, 110),
+            EventRef("truth-only", 0, 10),
+        ),
+        subject_by_session={
+            "match": "with_truth_no_match",
+            "truth-only": "with_truth_no_match",
+            "negative": "negative_with_fp",
+            "empty": "empty",
+        },
+    )
+
+    assert result["subjects"]["with_truth_no_match"]["f1"] == 0.0
+    assert result["subjects"]["negative_with_fp"]["f1"] == 0.0
+    assert result["subjects"]["empty"]["f1"] is None
+    assert result["distribution"]["excluded_empty"] == 1
+
+
+def test_paired_subject_counts_use_union_without_changing_promotion_score():
+    """Paired diagnostic comparison counts every subject in either run."""
+
+    from src.pipeline.diagnostics import paired_subject_diagnostics
+
+    incumbent = {"subjects": {"a": {"f1": 0.5}, "b": {"f1": 1.0}}}
+    candidate = {"subjects": {"a": {"f1": 0.5}, "c": {"f1": 0.0}}}
+
+    paired = paired_subject_diagnostics(incumbent, candidate)
+
+    assert paired["improved"] + paired["unchanged"] + paired["worsened"] == 3
+
+
+def test_aggregate_fold_results_uses_maximum_worker_peak_rss():
+    """Aggregate RSS is the highest observed worker peak, never a sum."""
+
+    from src.pipeline.runner import aggregate_fold_results
+
+    first, second = aggregate_test_results()
+    summary = aggregate_fold_results(
+        [RunConfig(outer_fold=0), RunConfig(outer_fold=1)],
+        [
+            replace(first, runtime_diagnostics={"peak_working_set_bytes": 101, "unavailable_reason": None}),
+            replace(second, runtime_diagnostics={"peak_working_set_bytes": 307, "unavailable_reason": None}),
+        ],
+    )
+
+    assert summary["runtime_diagnostics"]["peak_working_set_bytes"] == 307
+
+
+def test_crossfit_cli_writes_diagnostics_sibling_from_fold_result(tmp_path, monkeypatch):
+    """The published diagnostic file is exactly the fold result's evidence."""
+
+    from scripts import crossfit_event_stack as cli
+
+    result = replace(
+        aggregate_test_results()[0],
+        config_hash="diagnostic-fold",
+        subject_diagnostics={
+            "schema_version": 1,
+            "subjects": {"s": {"f1": 0.5}},
+            "distribution": {"included": 1, "excluded_empty": 0, "f1_percentiles": {"p0": 0.5}},
+            "runtime": {"peak_working_set_bytes": 5, "unavailable_reason": None},
+        },
+    )
+    monkeypatch.setattr(cli.project_config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cli, "run_folds", lambda *_args, **_kwargs: [result])
+    monkeypatch.setattr(sys, "argv", ["crossfit", "--fold", "0"])
+
+    assert cli.main() == 0
+    diagnostic = tmp_path / "crossfit" / "fold0_diagnostic-fold.diagnostics.json"
+    assert json.loads(diagnostic.read_text(encoding="utf-8")) == result.subject_diagnostics
+
+
 def test_context_version_changes_experiment_and_fold_cache_keys(tmp_path: Path):
     """Context feature selection is part of experiment and cache identity."""
 
@@ -1123,7 +1205,8 @@ def test_cli_all_writes_multiscale_configs_fold_outputs_and_summary(tmp_path, mo
     assert all(config.micro_enabled and not config.micro_gravity_align for config in recorded_configs)
     assert all(config.micro_threshold_grid == (0.2, 0.4) and config.micro_positive_middle_fraction == 0.6 for config in recorded_configs)
     output = tmp_path / "crossfit"
-    assert len(list(output.glob("fold*.json"))) == 5
+    assert len([path for path in output.glob("fold*.json") if ".diagnostics." not in path.name]) == 5
+    assert len(list(output.glob("fold*.diagnostics.json"))) == 5
     summaries = list(output.glob("summary_*.json"))
     assert len(summaries) == 1
     summary = json.loads(summaries[0].read_text(encoding="utf-8"))

@@ -1,7 +1,7 @@
 {
   "aggregate_summary": {
     "filename": "promotion_summary.json",
-    "sha256": "8cc99f6dc2b8694cf661e001d4cb17d698fbbc8b3aa697616e55f86764a2cd4b"
+    "sha256": "871a8fcd8d52661292c8fed2f0a75a75f28d307cb0cbd4ddb11e976cc1ee30bd"
   },
   "attestation_version": 1,
   "bundles": {
@@ -10,23 +10,28 @@
       "role": "deployment"
     },
     "outer-fold-0": {
-      "manifest_sha256": "362bf80581c34dc9a460e8e01887c671efbfe148bad623a998c0c1d284abce4b",
+      "diagnostics_sha256": "57c72f2afcbea766d30070b4412bf37bc079440d5865aebc0ebef2e7b872a391",
+      "manifest_sha256": "08a2c912e5a4ddec8ed23a2e81f6c009b59a20d5e3b3e1b8e6b1362572043278",
       "role": "outer-fold-evidence"
     },
     "outer-fold-1": {
-      "manifest_sha256": "c7952bd7b3d929d6b215434012799124121aaaf47ec3a58f62d882b9663d1544",
+      "diagnostics_sha256": "c7f7766a7cd37f1e57d26e9667bb449ec7d01eaa1a0008cce076b5bed177ee0c",
+      "manifest_sha256": "d324da9b19b1c077a0cb3d7cab6df61c43c80b2714fc2d99e394d86ada6ed9ca",
       "role": "outer-fold-evidence"
     },
     "outer-fold-2": {
-      "manifest_sha256": "ccf283818d2fb8bbee8bb15c172c74901b19c8a83a1cc3c77f57665c7654279b",
+      "diagnostics_sha256": "5b9323e340ab26fd25736ae07ff73e6a66d1f35c89bbe738c7dc809974070939",
+      "manifest_sha256": "be0ecca1fc199124bb6b97bdd6b7e752a0efba93becfca09518443fdd4c6d190",
       "role": "outer-fold-evidence"
     },
     "outer-fold-3": {
-      "manifest_sha256": "0ed633574ea6b6cdfe54f2b465037e390f95ef9873f53b4fd21b3302186b8cf3",
+      "diagnostics_sha256": "52355ed56e0fc0c494b092e9d1aab9c0b29e9a53ed6f97819da385bc6ce07286",
+      "manifest_sha256": "a03db4e35a076ffe3e2dbb6f57bb46a117fb7ddd71d738f9e81d6a87a9aeacab",
       "role": "outer-fold-evidence"
     },
     "outer-fold-4": {
-      "manifest_sha256": "6f03d08ab99bd2e9846fbc94a22a2eff4d6cdd4e1a78655fe7516d6fb4dd798f",
+      "diagnostics_sha256": "453fb281456425b8ad4d31571dd0f2cf9d9dcdf6ab3d26ea9bf3f7614daf15dc",
+      "manifest_sha256": "020171610d938527f721e8fcf59ed8d9f1566754b6864228f5372eb070c47d22",
       "role": "outer-fold-evidence"
     }
   },

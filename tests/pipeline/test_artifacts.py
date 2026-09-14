@@ -18,10 +18,12 @@ from src.pipeline.artifacts import (
     cleanup_stale_bundle_temporary_directories,
     load_event_stack_bundle,
     promote_summary,
+    verify_promotion_attestation,
     verify_bundle_manifest,
     write_event_stack_bundle,
 )
 from src.pipeline.event_stack import DensityConfig, EventMetrics
+from src.pipeline.diagnostics import canonical_diagnostics_bytes
 from src.pipeline.runner import FoldResult, RunConfig, aggregate_fold_results, cache_key, expected_feature_dimensions, experiment_key, fold_result_to_dict
 
 
@@ -135,6 +137,15 @@ def _registered_promotion_fixture(
             selected_admission_nms_iou=0.3,
             selected_admission_threshold=0.2,
             selected_admission_subject_cap=8,
+            subject_diagnostics={
+                "schema_version": 1,
+                "subjects": {f"outer-{config.outer_fold}": {"f1": 2 / 3}},
+                "distribution": {
+                    "included": 1, "excluded_empty": 0,
+                    "f1_percentiles": {"p0": 2 / 3, "p25": 2 / 3, "p50": 2 / 3, "p75": 2 / 3, "p100": 2 / 3},
+                },
+                "runtime": {"peak_working_set_bytes": 10, "unavailable_reason": None, "cuda_peak_bytes": None, "ssl_runtime": None},
+            },
         )
         results.append(result)
         record = fold_result_to_dict(result)
@@ -149,6 +160,9 @@ def _registered_promotion_fixture(
     for record in records:
         (crossfit / f"fold{record['run_config']['outer_fold']}_{record['config_hash']}.json").write_text(
             json.dumps(record), encoding="utf-8"
+        )
+        (crossfit / f"fold{record['run_config']['outer_fold']}_{record['config_hash']}.diagnostics.json").write_bytes(
+            canonical_diagnostics_bytes(record["subject_diagnostics"])
         )
     monkeypatch.setattr(promotion.project_config, "OUTPUT_DIR", output_dir)
 
@@ -177,6 +191,60 @@ def test_registered_trainer_rejects_summary_or_evidence_tampering_before_any_wri
     with pytest.raises(PromotionContractError):
         promotion.registered_filesystem_trainer(summary)
     assert not output_root.exists()
+
+
+def test_registered_fold_records_reject_diagnostic_sibling_tampering(tmp_path: Path, monkeypatch):
+    """Promotion only accepts a diagnostic sibling identical to cached evidence."""
+
+    promotion, summary, records = _registered_promotion_fixture(tmp_path, monkeypatch)
+    path = tmp_path / "outputs" / "crossfit" / f"fold0_{records[0]['config_hash']}.diagnostics.json"
+    path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(PromotionContractError, match="diagnostics"):
+        promotion._registered_fold_records(summary)
+
+
+def test_bootstrap_refuses_changed_input_fingerprint_without_touching_incumbent(tmp_path: Path, monkeypatch):
+    """The immutable bootstrap performs all provenance checks before any write."""
+
+    from scripts.bootstrap_event_stack_diagnostics import bootstrap_incumbent_diagnostics
+
+    _promotion, summary, _records = _registered_promotion_fixture(tmp_path, monkeypatch)
+    summary["experiment_key"] = "035644cf0889a5dd"
+    root = tmp_path / "models" / "event_stack" / "035644cf0889a5dd"
+    root.mkdir(parents=True)
+    summary_path = root / "promotion_summary.json"
+    summary_path.write_bytes(json.dumps(summary, sort_keys=True, indent=2).encode("utf-8") + b"\n")
+    entries = {}
+    for fold in range(5):
+        manifest = root / f"outer-fold-{fold}" / "manifest.json"
+        manifest.parent.mkdir()
+        manifest.write_text("{}", encoding="utf-8")
+        entries[f"outer-fold-{fold}"] = {"manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()}
+    (root / "promotion_attestation.json").write_text(
+        json.dumps({
+            "run_key": "035644cf0889a5dd",
+            "aggregate_summary": {"sha256": hashlib.sha256(summary_path.read_bytes()).hexdigest()},
+            "bundles": entries,
+        }),
+        encoding="utf-8",
+    )
+    before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+    class ChangedSource:
+        def input_files(self, _config):
+            return ()
+
+    with pytest.raises(PromotionContractError, match="current files"):
+        bootstrap_incumbent_diagnostics(
+            "035644cf0889a5dd",
+            models_root=tmp_path / "models",
+            output_directory=tmp_path / "outputs",
+            source_factory=lambda _root: ChangedSource(),
+        )
+
+    after = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    assert after == before
 
 
 def test_context_v1_registered_summary_identity_accepts_attested_folds_and_rejects_tampering(
@@ -565,6 +633,17 @@ def test_promotion_attestation_binds_canonical_summary_and_every_bundle_manifest
         assert entry["manifest_sha256"] == hashlib.sha256(
             (run_root / key / "manifest.json").read_bytes()
         ).hexdigest()
+
+
+def test_promotion_attestation_rejects_modified_fold_diagnostics(tmp_path: Path):
+    """Diagnostics are immutable evidence, not an unbound convenience file."""
+
+    promote_summary(_qualified_summary(tmp_path), output_root=tmp_path / "models", trainer=_six_bundle_trainer)
+    root = tmp_path / "models" / "event_stack" / "registered-key"
+    path = root / "outer-fold-0" / "diagnostics.json"
+    path.write_text("{}", encoding="utf-8")
+
+    assert "diagnostics" in " ".join(verify_promotion_attestation(root))
 
 
 def test_bundle_write_rejects_same_named_directory_outside_trusted_root(tmp_path: Path):

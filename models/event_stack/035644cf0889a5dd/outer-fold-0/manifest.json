@@ -9,6 +9,7 @@
   },
   "development_evidence_warning": "Outer-fold evidence is development evidence only and is not an untouched generalization estimate.",
   "files": {
+    "diagnostics.json": "57c72f2afcbea766d30070b4412bf37bc079440d5865aebc0ebef2e7b872a391",
     "feature_schema.json": "2eb33080d74d37dacb081362a45dd56dbd4142cc1029efc77b84cc6d154a4d87",
     "macro.joblib": "078414601751c75c084b9b4e741a16c8903f5c4fa92032841fea9b8cc9e81cbf",
     "micro.joblib": "8ceeffb426fe08d9b248926864dc20f8ee48ce4fbba76eebbcedca194be2a48c",

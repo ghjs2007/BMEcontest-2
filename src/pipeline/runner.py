@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from numbers import Integral, Real
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 def _physical_cpu_count() -> int:
     """Prefer physical cores, with a conservative limit when detection is absent."""
@@ -71,6 +71,7 @@ from src.pipeline.event_stack import (
     union_candidates,
 )
 from src.pipeline.context_features import CONTEXT_V1_COLUMNS
+from src.pipeline.diagnostics import aggregate_subject_diagnostics, subject_diagnostics
 
 
 WINDOW_MODEL_PARAMETERS = {
@@ -287,6 +288,65 @@ class FoldResult:
     verifier_lgbm_oof_seconds: float = 0.0
     verifier_logistic_outer_seconds: float = 0.0
     verifier_lgbm_outer_seconds: float = 0.0
+    subject_diagnostics: Mapping[str, object] = field(default_factory=dict)
+    runtime_diagnostics: Mapping[str, object] = field(default_factory=dict)
+
+
+def peak_working_set_bytes() -> int | None:
+    """Return the Windows process peak working set, or ``None`` if unavailable."""
+
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+
+        counters = PROCESS_MEMORY_COUNTERS_EX()
+        counters.cb = ctypes.sizeof(counters)
+        process = ctypes.windll.kernel32.GetCurrentProcess()
+        ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+            process, ctypes.byref(counters), counters.cb
+        )
+        return int(counters.PeakWorkingSetSize) if ok else None
+    except (AttributeError, OSError):
+        return None
+
+
+def _runtime_diagnostics(
+    peak_provider: Callable[[], int | None] | None = None,
+) -> dict[str, object]:
+    """Record runtime evidence without inventing unavailable measurements."""
+
+    peak = (peak_provider or peak_working_set_bytes)()
+    return {
+        "peak_working_set_bytes": peak,
+        "unavailable_reason": (
+            None
+            if peak is not None
+            else (
+                "Windows GetProcessMemoryInfo is unavailable"
+                if os.name == "nt"
+                else "Windows GetProcessMemoryInfo is unavailable on this platform"
+            )
+        ),
+        "cuda_peak_bytes": None,
+        "ssl_runtime": None,
+    }
 
 
 @dataclass(frozen=True)
@@ -888,6 +948,8 @@ def _micro_training_keep(
 def _execute_outer_dataset(
     config: RunConfig,
     data_source: FoldDataset,
+    *,
+    peak_provider: Callable[[], int | None] | None = None,
 ) -> FoldResult:
     """Run nested OOF threshold selection and one untouched outer evaluation."""
 
@@ -1432,6 +1494,7 @@ def _execute_outer_dataset(
             "verifier_lgbm_oof": verifier_lgbm_oof_seconds,
             "admission_selection": admission_selection_seconds,
         })
+    runtime = _runtime_diagnostics(peak_provider)
     result = FoldResult(
         config_hash=config_hash,
         threshold=policy.threshold,
@@ -1476,6 +1539,16 @@ def _execute_outer_dataset(
         verifier_lgbm_oof_seconds=verifier_lgbm_oof_seconds,
         verifier_logistic_outer_seconds=verifier_logistic_outer_seconds,
         verifier_lgbm_outer_seconds=verifier_lgbm_outer_seconds,
+        subject_diagnostics=subject_diagnostics(
+            selected_predictions,
+            data_source.validation_truths,
+            {
+                sid: data_source.subject_by_session[sid]
+                for sid in {window.sid for window in data_source.validation.windows}
+            },
+            runtime=runtime,
+        ),
+        runtime_diagnostics=runtime,
     )
     return _OuterRun(result=result, fit=final_fit)
 
@@ -1996,6 +2069,8 @@ def fold_result_to_dict(result: FoldResult) -> dict[str, object]:
         "verifier_lgbm_oof_seconds": result.verifier_lgbm_oof_seconds,
         "verifier_logistic_outer_seconds": result.verifier_logistic_outer_seconds,
         "verifier_lgbm_outer_seconds": result.verifier_lgbm_outer_seconds,
+        "subject_diagnostics": dict(result.subject_diagnostics),
+        "runtime_diagnostics": dict(result.runtime_diagnostics),
     }
 
 
@@ -2074,6 +2149,13 @@ def _fold_result_from_dict(payload: Mapping[str, object]) -> FoldResult:
         verifier_lgbm_outer_seconds=float(
             payload.get("verifier_lgbm_outer_seconds", 0.0)
         ),
+        subject_diagnostics=dict(payload.get("subject_diagnostics", {})),
+        runtime_diagnostics=dict(payload.get("runtime_diagnostics", {
+            "peak_working_set_bytes": None,
+            "unavailable_reason": "not recorded by legacy cache",
+            "cuda_peak_bytes": None,
+            "ssl_runtime": None,
+        })),
     )
 
 
@@ -2088,13 +2170,17 @@ def experiment_key(configs: Sequence[RunConfig]) -> str:
 
 
 def aggregate_fold_results(
-    configs: Sequence[RunConfig], results: Sequence[FoldResult]
+    configs: Sequence[RunConfig], results: Sequence[FoldResult],
+    *,
+    diagnostic_payloads: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Pool event counts and truth-weight candidate recall across outer folds."""
     if not configs or len(configs) != len(results):
         raise ValueError("configs and results must have equal nonzero lengths")
     if len({config.outer_fold for config in configs}) != len(configs):
         raise ValueError("duplicate outer folds are not allowed")
+    if diagnostic_payloads is not None and len(diagnostic_payloads) != len(results):
+        raise ValueError("diagnostic payloads must align with fold results")
 
     def pooled_metrics(metrics: Sequence[EventMetrics]) -> dict[str, int | float]:
         n_tp = sum(item.n_tp for item in metrics)
@@ -2122,6 +2208,12 @@ def aggregate_fold_results(
 
     slice_names = sorted({name for result in results for name in result.slices})
     timing_names = sorted({name for result in results for name in result.timings_seconds})
+    peaks = [
+        value
+        for result in results
+        for value in (result.runtime_diagnostics.get("peak_working_set_bytes"),)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
     return {
         "inner_metrics": pooled_metrics([result.inner_metrics for result in results]),
         "outer_metrics": pooled_metrics([result.outer_metrics for result in results]),
@@ -2138,6 +2230,26 @@ def aggregate_fold_results(
             name: sum(result.timings_seconds.get(name, 0.0) for result in results)
             for name in timing_names
         },
+        "runtime_diagnostics": {
+            "peak_working_set_bytes": max(peaks) if peaks else None,
+            "unavailable_reason": (
+                None
+                if peaks
+                else "; ".join(sorted({
+                    str(result.runtime_diagnostics.get("unavailable_reason"))
+                    for result in results
+                    if result.runtime_diagnostics.get("unavailable_reason")
+                })) or "worker peak working set was not recorded"
+            ),
+            "aggregation": "max_worker_peak",
+            "cuda_peak_bytes": None,
+            "ssl_runtime": None,
+        },
+        "subject_diagnostics": aggregate_subject_diagnostics(
+            diagnostic_payloads
+            if diagnostic_payloads is not None
+            else [result.subject_diagnostics for result in results]
+        ),
         "folds": [
             {"outer_fold": config.outer_fold, "config_hash": result.config_hash,
              "micro_threshold": result.micro_threshold}

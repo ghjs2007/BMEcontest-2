@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from dataclasses import asdict
@@ -289,6 +290,7 @@ def main() -> int:
         for fold in fold_indices
     ]
     results = run_folds(configs, workers=args.workers, force=args.force)
+    diagnostic_paths: list[Path] = []
     for config, result in zip(configs, results):
         output_path = output_directory / (
             f"fold{config.outer_fold}_{result.config_hash}.json"
@@ -296,6 +298,11 @@ def main() -> int:
         payload = fold_result_to_dict(result)
         payload["run_config"] = asdict(config)
         write_json_atomic(output_path, payload)
+        diagnostic_path = output_directory / (
+            f"fold{config.outer_fold}_{result.config_hash}.diagnostics.json"
+        )
+        write_json_atomic(diagnostic_path, result.subject_diagnostics)
+        diagnostic_paths.append(diagnostic_path)
         metrics = result.outer_metrics
         cache_label = "cache" if result.cache_hits.get("fold_result") else "trained"
         cap_label = (
@@ -312,8 +319,16 @@ def main() -> int:
             f"[{cache_label}]"
         )
         print(f"  output: {output_path}")
+        print(f"  diagnostics: {diagnostic_path}")
     if args.fold == "all" or summary_alias is not None:
-        summary = aggregate_fold_results(configs, results)
+        summary = aggregate_fold_results(
+            configs,
+            results,
+            diagnostic_payloads=[
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in diagnostic_paths
+            ],
+        )
         summary["run_configs"] = [asdict(config) for config in configs]
         summary["experiment_key"] = experiment_key(configs)
         summary_path = output_directory / f"summary_{summary['experiment_key']}.json"

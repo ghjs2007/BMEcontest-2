@@ -140,6 +140,7 @@ class EventStackBundle:
     metrics: Mapping[str, object]
     source_fingerprints: tuple[Mapping[str, object], ...]
     role: str
+    diagnostics: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if self.role not in _ROLES:
@@ -156,6 +157,30 @@ class EventStackBundle:
         paths = [str(item["path"]) for item in fingerprints]
         if len(paths) != len(set(paths)):
             raise ValueError("source_fingerprints must not repeat paths")
+        if self.role == "outer-fold-evidence":
+            diagnostics = self.diagnostics
+            if diagnostics is None:
+                diagnostics = {
+                    "schema_version": 1,
+                    "subjects": {},
+                    "distribution": {
+                        "included": 0,
+                        "excluded_empty": 0,
+                        "f1_percentiles": {
+                            "p0": None, "p25": None, "p50": None,
+                            "p75": None, "p100": None,
+                        },
+                    },
+                    "runtime": {
+                        "peak_working_set_bytes": None,
+                        "unavailable_reason": "diagnostics were not provided by this legacy trainer",
+                        "cuda_peak_bytes": None,
+                        "ssl_runtime": None,
+                    },
+                }
+            if not isinstance(diagnostics, Mapping):
+                raise ValueError("outer-fold diagnostics must be an object")
+            object.__setattr__(self, "diagnostics", dict(diagnostics))
 
 
 class PromotionTrainer(Protocol):
@@ -315,6 +340,10 @@ def _write_bundle_contents(
     (temporary / "feature_schema.json").write_bytes(
         _stable_json_bytes(bundle.feature_schema)
     )
+    if bundle.diagnostics is not None:
+        (temporary / "diagnostics.json").write_bytes(
+            _stable_json_bytes(dict(bundle.diagnostics))
+        )
     files = {
         path.name: _sha256(path)
         for path in sorted(temporary.iterdir(), key=lambda item: item.name)
@@ -377,6 +406,8 @@ def verify_bundle_manifest(
     else:
         expected_model_files = {f"{name}.joblib" for name in models}
     expected_names = _METADATA_FILENAMES | expected_model_files
+    if manifest.get("role") == "outer-fold-evidence":
+        expected_names = expected_names | {"diagnostics.json"}
     actual_names = {
         path.name
         for path in destination.iterdir()
@@ -411,6 +442,15 @@ def verify_bundle_manifest(
             normalize_feature_schema(feature_schema)
         except ValueError as exc:
             problems.append(str(exc))
+    if manifest.get("role") == "outer-fold-evidence":
+        diagnostic_path = destination / "diagnostics.json"
+        try:
+            diagnostics = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            problems.append(f"diagnostics JSON cannot be read: {exc}")
+        else:
+            if not isinstance(diagnostics, dict):
+                problems.append("diagnostics JSON must be an object")
     if not isinstance(manifest.get("metrics"), dict):
         problems.append("manifest metrics must be an object")
     fingerprints = manifest.get("source_fingerprints")
@@ -497,6 +537,11 @@ def load_event_stack_bundle(
         metrics=dict(manifest["metrics"]),
         source_fingerprints=tuple(manifest["source_fingerprints"]),
         role=role,
+        diagnostics=(
+            json.loads((destination / "diagnostics.json").read_text(encoding="utf-8"))
+            if (destination / "diagnostics.json").is_file()
+            else None
+        ),
     )
 
 
@@ -566,6 +611,8 @@ def _write_promotion_attestation(
         key: {
             "role": bundles[key].role,
             "manifest_sha256": _sha256(run_root / key / "manifest.json"),
+            **({"diagnostics_sha256": _sha256(run_root / key / "diagnostics.json")}
+               if bundles[key].role == "outer-fold-evidence" else {}),
         }
         for key in sorted(bundles)
     }
@@ -633,6 +680,14 @@ def verify_promotion_attestation(
         if not isinstance(entry, dict) or entry.get("role") != role or not hash_matches:
             problems.append(f"promotion attestation manifest hash does not match {key}")
             continue
+        if role == "outer-fold-evidence":
+            diagnostic_path = root / key / "diagnostics.json"
+            if (
+                not diagnostic_path.is_file()
+                or entry.get("diagnostics_sha256") != _sha256(diagnostic_path)
+            ):
+                problems.append(f"promotion attestation diagnostics hash does not match {key}")
+                continue
         manifest_problems = verify_bundle_manifest(root / key, expected_run_key=key)
         if manifest_problems:
             problems.append(f"promotion attestation bundle is invalid for {key}")

@@ -462,6 +462,334 @@
       "sensitivity": 0.6222222222222222
     }
   },
+  "subject_diagnostics": {
+    "distribution": {
+      "excluded_empty": 0,
+      "f1_percentiles": {
+        "p0": 0.0,
+        "p100": 0.8333333333333334,
+        "p25": 0.4444444444444445,
+        "p50": 0.5454545454545454,
+        "p75": 0.6666666666666666
+      },
+      "included": 39
+    },
+    "schema_version": 1,
+    "subjects": {
+      "6C7": {
+        "f1": 0.0,
+        "n_pred": 1,
+        "n_tp": 0,
+        "n_true": 0,
+        "ppv": 0.0,
+        "sensitivity": 0.0
+      },
+      "HNU 21013": {
+        "f1": 0.5,
+        "n_pred": 5,
+        "n_tp": 2,
+        "n_true": 3,
+        "ppv": 0.4,
+        "sensitivity": 0.6666666666666666
+      },
+      "HNU21001": {
+        "f1": 0.8000000000000002,
+        "n_pred": 5,
+        "n_tp": 4,
+        "n_true": 5,
+        "ppv": 0.8,
+        "sensitivity": 0.8
+      },
+      "HNU21002": {
+        "f1": 0.8333333333333334,
+        "n_pred": 6,
+        "n_tp": 5,
+        "n_true": 6,
+        "ppv": 0.8333333333333334,
+        "sensitivity": 0.8333333333333334
+      },
+      "HNU21003": {
+        "f1": 0.4,
+        "n_pred": 8,
+        "n_tp": 2,
+        "n_true": 2,
+        "ppv": 0.25,
+        "sensitivity": 1.0
+      },
+      "HNU21004": {
+        "f1": 0.6666666666666666,
+        "n_pred": 7,
+        "n_tp": 4,
+        "n_true": 5,
+        "ppv": 0.5714285714285714,
+        "sensitivity": 0.8
+      },
+      "HNU21005": {
+        "f1": 0.5454545454545454,
+        "n_pred": 5,
+        "n_tp": 3,
+        "n_true": 6,
+        "ppv": 0.6,
+        "sensitivity": 0.5
+      },
+      "HNU21006": {
+        "f1": 0.7692307692307693,
+        "n_pred": 8,
+        "n_tp": 5,
+        "n_true": 5,
+        "ppv": 0.625,
+        "sensitivity": 1.0
+      },
+      "HNU21008": {
+        "f1": 0.8000000000000002,
+        "n_pred": 5,
+        "n_tp": 4,
+        "n_true": 5,
+        "ppv": 0.8,
+        "sensitivity": 0.8
+      },
+      "HNU21009": {
+        "f1": 0.6,
+        "n_pred": 5,
+        "n_tp": 3,
+        "n_true": 5,
+        "ppv": 0.6,
+        "sensitivity": 0.6
+      },
+      "HNU21010": {
+        "f1": 0.0,
+        "n_pred": 0,
+        "n_tp": 0,
+        "n_true": 2,
+        "ppv": 0.0,
+        "sensitivity": 0.0
+      },
+      "HNU21011": {
+        "f1": 0.7692307692307693,
+        "n_pred": 8,
+        "n_tp": 5,
+        "n_true": 5,
+        "ppv": 0.625,
+        "sensitivity": 1.0
+      },
+      "HNU21012": {
+        "f1": 0.0,
+        "n_pred": 5,
+        "n_tp": 0,
+        "n_true": 2,
+        "ppv": 0.0,
+        "sensitivity": 0.0
+      },
+      "HNU21014": {
+        "f1": 0.5,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 4,
+        "ppv": 0.375,
+        "sensitivity": 0.75
+      },
+      "HNU21015": {
+        "f1": 0.7692307692307693,
+        "n_pred": 8,
+        "n_tp": 5,
+        "n_true": 5,
+        "ppv": 0.625,
+        "sensitivity": 1.0
+      },
+      "HNU21016": {
+        "f1": 0.2222222222222222,
+        "n_pred": 8,
+        "n_tp": 1,
+        "n_true": 1,
+        "ppv": 0.125,
+        "sensitivity": 1.0
+      },
+      "HNU21017": {
+        "f1": 0.6666666666666666,
+        "n_pred": 7,
+        "n_tp": 4,
+        "n_true": 5,
+        "ppv": 0.5714285714285714,
+        "sensitivity": 0.8
+      },
+      "HNU21019": {
+        "f1": 0.5454545454545454,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 3,
+        "ppv": 0.375,
+        "sensitivity": 1.0
+      },
+      "HNU21021": {
+        "f1": 0.6,
+        "n_pred": 6,
+        "n_tp": 3,
+        "n_true": 4,
+        "ppv": 0.5,
+        "sensitivity": 0.75
+      },
+      "HNU21022": {
+        "f1": 0.2222222222222222,
+        "n_pred": 8,
+        "n_tp": 1,
+        "n_true": 1,
+        "ppv": 0.125,
+        "sensitivity": 1.0
+      },
+      "HNU21023": {
+        "f1": 0.6153846153846154,
+        "n_pred": 8,
+        "n_tp": 4,
+        "n_true": 5,
+        "ppv": 0.5,
+        "sensitivity": 0.8
+      },
+      "HNU21024": {
+        "f1": 0.5454545454545454,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 3,
+        "ppv": 0.375,
+        "sensitivity": 1.0
+      },
+      "HNU21025": {
+        "f1": 0.4615384615384615,
+        "n_pred": 5,
+        "n_tp": 3,
+        "n_true": 8,
+        "ppv": 0.6,
+        "sensitivity": 0.375
+      },
+      "HNU21026": {
+        "f1": 0.6153846153846153,
+        "n_pred": 7,
+        "n_tp": 4,
+        "n_true": 6,
+        "ppv": 0.5714285714285714,
+        "sensitivity": 0.6666666666666666
+      },
+      "HNU21027": {
+        "f1": 0.0,
+        "n_pred": 1,
+        "n_tp": 0,
+        "n_true": 1,
+        "ppv": 0.0,
+        "sensitivity": 0.0
+      },
+      "HNU21028": {
+        "f1": 0.6666666666666666,
+        "n_pred": 4,
+        "n_tp": 2,
+        "n_true": 2,
+        "ppv": 0.5,
+        "sensitivity": 1.0
+      },
+      "HNU21029": {
+        "f1": 0.5,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 4,
+        "ppv": 0.375,
+        "sensitivity": 0.75
+      },
+      "HNU21031": {
+        "f1": 0.5714285714285715,
+        "n_pred": 8,
+        "n_tp": 4,
+        "n_true": 6,
+        "ppv": 0.5,
+        "sensitivity": 0.6666666666666666
+      },
+      "HNU21032": {
+        "f1": 0.4615384615384615,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 5,
+        "ppv": 0.375,
+        "sensitivity": 0.6
+      },
+      "HNU21034": {
+        "f1": 0.36363636363636365,
+        "n_pred": 7,
+        "n_tp": 2,
+        "n_true": 4,
+        "ppv": 0.2857142857142857,
+        "sensitivity": 0.5
+      },
+      "HNU21035": {
+        "f1": 0.6666666666666666,
+        "n_pred": 4,
+        "n_tp": 2,
+        "n_true": 2,
+        "ppv": 0.5,
+        "sensitivity": 1.0
+      },
+      "HNU21036": {
+        "f1": 0.7142857142857143,
+        "n_pred": 8,
+        "n_tp": 5,
+        "n_true": 6,
+        "ppv": 0.625,
+        "sensitivity": 0.8333333333333334
+      },
+      "HNU21037": {
+        "f1": 0.4444444444444445,
+        "n_pred": 4,
+        "n_tp": 2,
+        "n_true": 5,
+        "ppv": 0.5,
+        "sensitivity": 0.4
+      },
+      "HNU21038": {
+        "f1": 0.5454545454545454,
+        "n_pred": 8,
+        "n_tp": 3,
+        "n_true": 3,
+        "ppv": 0.375,
+        "sensitivity": 1.0
+      },
+      "HNU21039": {
+        "f1": 0.5,
+        "n_pred": 6,
+        "n_tp": 3,
+        "n_true": 6,
+        "ppv": 0.5,
+        "sensitivity": 0.5
+      },
+      "HNU21040": {
+        "f1": 0.6666666666666666,
+        "n_pred": 6,
+        "n_tp": 3,
+        "n_true": 3,
+        "ppv": 0.5,
+        "sensitivity": 1.0
+      },
+      "HNU21041": {
+        "f1": 0.2222222222222222,
+        "n_pred": 8,
+        "n_tp": 1,
+        "n_true": 1,
+        "ppv": 0.125,
+        "sensitivity": 1.0
+      },
+      "HNU212020": {
+        "f1": 0.4444444444444445,
+        "n_pred": 5,
+        "n_tp": 2,
+        "n_true": 4,
+        "ppv": 0.4,
+        "sensitivity": 0.5
+      },
+      "hnu21033": {
+        "f1": 0.7499999999999999,
+        "n_pred": 3,
+        "n_tp": 3,
+        "n_true": 5,
+        "ppv": 1.0,
+        "sensitivity": 0.6
+      }
+    }
+  },
   "timings_seconds": {
     "admission_selection": 186.21514080000634,
     "feature_extraction": 2316.1070000000764,
