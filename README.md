@@ -164,7 +164,8 @@ v4：窗模型 5 折 bag（+0.06~0.09）——增益含泄漏成分，bag 结构
 v3/v2/v1：TCN 分融合、复核负样本、时刻先验等演进。
 
 对照系统（FD 预训练微调 + proposal 解码，eligible 校正）均值 ~0.27。
-逐折产物 outputs/slide_verifier_fold{k}.json（v6 干净协议）；可复现命令见 §复现。
+该对照系统的逐折诊断产物已在发布清理中移除；结果作为历史基线保留，当前正式证据以
+`outputs/crossfit/summary_a7396a9aa7c38f42.json` 及其 5 个逐折 JSON 为准。
 
 ### 5.5 正式 locked nested 基线（2026-09-08）
 
@@ -186,8 +187,8 @@ v3/v2/v1：TCN 分融合、复核负样本、时刻先验等演进。
 CPU/no-TCN baseline 聚合 sensitivity 0.582、PPV 0.324；短餐（<10min）recall
 16/39=0.410，非惯用手 recall 42/90=0.467。5 fold/4 inner splits 在 5 个受限
 CPU 进程下墙钟约 24s（各折阶段耗时合计 42.2s）；相同单折二次运行命中内容寻址
-缓存，从 13.3s 降至 3.0s。输出位于 `outputs/crossfit/`，可重建缓存位于
-`cache/crossfit/`，二者均已精确加入忽略规则。
+缓存，从 13.3s 降至 3.0s。当前 locked 证据位于 `outputs/crossfit/` 并纳入版本控制；
+可重建的试验缓存位于 `cache/crossfit/`，按精确规则忽略。
 
 coverage-fix 配套 42 维 verifier 的 nested 消融：候选 recall 从 0.791 升至
 0.863（132/153），最终 TP 从 89 升至 103，但 pred 从 275 增至 324，PPV
@@ -419,9 +420,9 @@ python scripts/official_iou_eval.py --all
 src/            # 核心库（config/data/eval/infer/models/pipeline/event_stack）
 scripts/        # event-stack、滑窗管线、对照系统、FD 预训练与官方评估
 docs/           # 正式架构、数据处理、组内/外部数据审计与发布说明
-checkpoints/    # FD 预训练权重（fd_pretrained_s1.pt）
-cache/          # 可重建缓存（sessions/slide/crossfit/cand_windows/validate_baselines/splits）
-outputs/        # crossfit/ locked 结果 + slide_verifier 诊断结果 + 对照系统产物
+checkpoints/    # 当前仍使用的模型训练检查点
+cache/          # 当前管线缓存（sessions/slide/micro15/splits/crossfit）
+outputs/        # 当前 locked crossfit 汇总与 5 个逐折证据
 dist/           # event_stack 发布包（当前预计算特征输入）+ 遗留对照推理包
 FDdatasets/     # FD-I/FD-II（KU Leuven 外部数据）
 ReferenceDocs/  # 文献综述（报告引用素材）
