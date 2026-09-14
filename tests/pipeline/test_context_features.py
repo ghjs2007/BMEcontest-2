@@ -145,3 +145,26 @@ def test_context_v1_rejects_infinite_probability():
     event = EventRef("s", 1_000_000, 1_100_000)
     with pytest.raises(ValueError, match="infinity"):
         context_v1_features([event], {"s": [(1_000_000, 1_010_000, np.inf)]}, {}, {"s": (0, 2_000_000)})
+
+
+def test_context_v1_rejects_nonfinite_window_timestamp():
+    event = EventRef("s", 1_000_000, 1_100_000)
+    with pytest.raises(ValueError, match="finite integer-like"):
+        context_v1_features(
+            [event],
+            {"s": [(1_000_000, np.inf, .5)]},
+            {},
+            {"s": (0, 2_000_000)},
+        )
+
+
+def test_context_v1_rejects_nonfinite_event_boundary():
+    event = EventRef("s", 1_000_000, np.inf)
+    with pytest.raises(ValueError, match="finite integer-like"):
+        context_v1_features([event], {}, {}, {"s": (0, 2_000_000)})
+
+
+def test_context_v1_rejects_nonfinite_session_boundary():
+    event = EventRef("s", 1_000_000, 1_100_000)
+    with pytest.raises(ValueError, match="finite integer-like"):
+        context_v1_features([event], {}, {}, {"s": (0, np.inf)})

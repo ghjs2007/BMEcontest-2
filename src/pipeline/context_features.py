@@ -74,17 +74,39 @@ def context_v1_features(
 
 
 def _regions(event, session_bounds: tuple[int, int]):
-    session_start, session_end = session_bounds
+    session_start, session_end = _validated_time_bounds(
+        session_bounds, "session bounds"
+    )
+    event_start, event_end = _validated_time_bounds(
+        (event.start_ms, event.end_ms), "event bounds"
+    )
     if session_end < session_start:
         raise ValueError("session bounds must be ordered")
-    if event.end_ms < event.start_ms:
+    if event_end < event_start:
         raise ValueError("event bounds must be ordered")
     clip = lambda start, end: (max(session_start, start), min(session_end, end))
     return (
-        clip(event.start_ms - CONTEXT_V1_CONTEXT_MS, event.start_ms),
-        clip(event.start_ms, event.end_ms),
-        clip(event.end_ms, event.end_ms + CONTEXT_V1_CONTEXT_MS),
+        clip(event_start - CONTEXT_V1_CONTEXT_MS, event_start),
+        clip(event_start, event_end),
+        clip(event_end, event_end + CONTEXT_V1_CONTEXT_MS),
     )
+
+
+def _validated_time_bounds(bounds, label):
+    try:
+        start, end = bounds
+        start = float(start)
+        end = float(end)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be finite integer-like") from exc
+    if (
+        not math.isfinite(start)
+        or not math.isfinite(end)
+        or not start.is_integer()
+        or not end.is_integer()
+    ):
+        raise ValueError(f"{label} must be finite integer-like")
+    return start, end
 
 
 def _validated_windows(windows):
@@ -93,12 +115,13 @@ def _validated_windows(windows):
         if len(window) != 3:
             raise ValueError("probability windows must be (start, end, probability)")
         start, end, probability = window
+        start, end = _validated_time_bounds((start, end), "probability window bounds")
         if end < start:
             raise ValueError("probability window bounds must be ordered")
         probability = float(probability)
         if math.isinf(probability):
             raise ValueError("Context-v1 features must not contain infinity")
-        result.append((float(start), float(end), probability))
+        result.append((start, end, probability))
     return result
 
 
