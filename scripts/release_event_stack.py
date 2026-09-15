@@ -98,6 +98,14 @@ def _active_dist_matches_candidate(root: Path, candidate: Mapping[str, object]) 
     run_key = candidate.get("run_key")
     if not isinstance(run_key, str):
         return False
+    try:
+        runtime = json.loads((root / "dist" / "event_stack" / "runtime_manifest.json").read_text(encoding="utf-8"))
+        expected_manifest = hashlib.sha256(
+            (root / "models" / "event_stack" / run_key / "deployment" / "manifest.json").read_bytes()
+        ).hexdigest()
+        return runtime.get("bundle_manifest_sha256") == expected_manifest
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
 
 
 def _journal_backup(root: Path, journal: Mapping[str, object]) -> Path | None:
@@ -130,14 +138,6 @@ def _restore_backup(root: Path, journal: Mapping[str, object], registry_path: Pa
         raise PromotionContractError("cannot restore backup over an unexpected active dist")
     os.replace(backup, destination)
     _journal_path(root).unlink()
-    try:
-        runtime = json.loads((root / "dist" / "event_stack" / "runtime_manifest.json").read_text(encoding="utf-8"))
-        expected_manifest = hashlib.sha256(
-            (root / "models" / "event_stack" / run_key / "deployment" / "manifest.json").read_bytes()
-        ).hexdigest()
-        return runtime.get("bundle_manifest_sha256") == expected_manifest
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return False
 
 
 def recover_release_transaction(root: Path = _ROOT) -> None:
