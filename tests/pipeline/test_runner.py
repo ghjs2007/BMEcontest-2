@@ -82,6 +82,18 @@ def test_aggregate_fold_results_uses_maximum_worker_peak_rss():
     assert summary["runtime_diagnostics"]["peak_working_set_bytes"] == 307
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows process-memory API")
+def test_peak_working_set_bytes_records_current_windows_process():
+    """Windows diagnostics use a pointer-width-safe process handle."""
+
+    from src.pipeline.runner import peak_working_set_bytes
+
+    peak = peak_working_set_bytes()
+
+    assert isinstance(peak, int)
+    assert peak > 0
+
+
 def test_crossfit_cli_writes_diagnostics_sibling_from_fold_result(tmp_path, monkeypatch):
     """The published diagnostic file is exactly the fold result's evidence."""
 

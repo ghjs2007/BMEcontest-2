@@ -316,11 +316,24 @@ def peak_working_set_bytes() -> int | None:
                 ("PrivateUsage", ctypes.c_size_t),
             ]
 
+        # Without explicit ctypes signatures, the pseudo-handle returned by
+        # GetCurrentProcess is truncated to a signed 32-bit integer on 64-bit
+        # Python, so Psapi rejects it.  Bind the documented HANDLE/pointer/DWORD
+        # signature before making the call.
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        get_process_memory_info = psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = (
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS_EX),
+            wintypes.DWORD,
+        )
+        get_process_memory_info.restype = wintypes.BOOL
         counters = PROCESS_MEMORY_COUNTERS_EX()
         counters.cb = ctypes.sizeof(counters)
-        process = ctypes.windll.kernel32.GetCurrentProcess()
-        ok = ctypes.windll.psapi.GetProcessMemoryInfo(
-            process, ctypes.byref(counters), counters.cb
+        ok = get_process_memory_info(
+            kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
         )
         return int(counters.PeakWorkingSetSize) if ok else None
     except (AttributeError, OSError):
