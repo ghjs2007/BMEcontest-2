@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import sys
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -162,6 +165,19 @@ def _validate_incumbent_input_provenance(
             raise PromotionContractError("registered fold evidence does not bind the current files and feature schema")
 
 
+def _install_staged_incumbent(stage: Path, incumbent: Path) -> None:
+    """Atomically replace an incumbent directory, restoring it if the swap fails."""
+
+    backup = incumbent.parent / f".{incumbent.name}.bootstrap-backup-{uuid.uuid4().hex}"
+    os.replace(incumbent, backup)
+    try:
+        os.replace(stage, incumbent)
+    except Exception:
+        os.replace(backup, incumbent)
+        raise
+    shutil.rmtree(backup)
+
+
 def bootstrap_incumbent_diagnostics(
     run_key: str,
     *,
@@ -198,11 +214,14 @@ def bootstrap_incumbent_diagnostics(
     if any(not item for item in diagnostics):
         raise PromotionContractError("incumbent replay did not produce subject diagnostics")
 
-    # No directory is touched above this point: all provenance and replay gates
-    # have already passed.
-    diagnostic_directory = root / "diagnostics"
-    diagnostic_directory.mkdir(parents=False, exist_ok=False)
+    # No incumbent directory is touched above this point: all provenance and
+    # replay gates have already passed. Build a complete replacement tree next
+    # to the incumbent, validate it, then atomically swap the directory.
+    stage = root.parent / f".{run_key}.bootstrap-{uuid.uuid4().hex}"
+    shutil.copytree(root, stage)
     try:
+        diagnostic_directory = stage / "diagnostics"
+        diagnostic_directory.mkdir(parents=False, exist_ok=False)
         written: list[Path] = []
         bundles: dict[str, EventStackBundle] = {}
         for config, record, diagnostic in zip(configs, records, diagnostics):
@@ -211,7 +230,7 @@ def bootstrap_incumbent_diagnostics(
             payload = dict(diagnostic)
             path.write_bytes(canonical_diagnostics_bytes(payload))
             written.append(path)
-            bundle_path = root / f"outer-fold-{config.outer_fold}"
+            bundle_path = stage / f"outer-fold-{config.outer_fold}"
             bundle_diagnostic = bundle_path / "diagnostics.json"
             bundle_diagnostic.write_bytes(canonical_diagnostics_bytes(payload))
             manifest_path = bundle_path / "manifest.json"
@@ -221,19 +240,22 @@ def bootstrap_incumbent_diagnostics(
             bundles[f"outer-fold-{config.outer_fold}"] = load_event_stack_bundle(
                 bundle_path, expected_role="outer-fold-evidence"
             )
-        deployment = root / "deployment"
+        deployment = stage / "deployment"
         bundles["deployment"] = load_event_stack_bundle(deployment, expected_role="deployment")
         summary["subject_diagnostics"] = aggregate_subject_diagnostics(diagnostics)
-        summary_path = root / "promotion_summary.json"
+        summary_path = stage / "promotion_summary.json"
         summary_path.write_bytes(_stable_json_bytes(summary))
-        _write_promotion_attestation(root, summary, bundles, expected_run_key=run_key)
-        problems = verify_promotion_attestation(root, expected_run_key=run_key)
+        _write_promotion_attestation(stage, summary, bundles, expected_run_key=run_key)
+        problems = verify_promotion_attestation(stage, expected_run_key=run_key)
         if problems:
             raise PromotionContractError("bootstrapped attestation failed verification: " + "; ".join(problems))
-        return tuple(written)
+        _install_staged_incumbent(stage, root)
+        return tuple(root / path.relative_to(stage) for path in written)
     except Exception:
-        # The guard promise is for failures before writes. Once installation
-        # begins, leave evidence for forensic inspection instead of deleting it.
+        # The incumbent remains byte-identical. Remove only the uninstalled
+        # staging tree; a later invocation can build a fresh stage and retry.
+        if stage.exists():
+            shutil.rmtree(stage)
         raise
 
 

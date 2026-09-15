@@ -247,6 +247,41 @@ def test_bootstrap_refuses_changed_input_fingerprint_without_touching_incumbent(
     assert after == before
 
 
+def test_bootstrap_install_rolls_back_swap_failure_and_can_retry(tmp_path: Path, monkeypatch):
+    from scripts import bootstrap_event_stack_diagnostics as bootstrap
+
+    root = tmp_path / "035644cf0889a5dd"
+    root.mkdir()
+    (root / "incumbent.txt").write_bytes(b"incumbent")
+    stage = tmp_path / ".stage-one"
+    stage.mkdir()
+    (stage / "replacement.txt").write_bytes(b"replacement")
+
+    real_replace = bootstrap.os.replace
+    calls = 0
+
+    def fail_install_swap(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected install swap failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(bootstrap.os, "replace", fail_install_swap)
+    with pytest.raises(OSError, match="injected install swap failure"):
+        bootstrap._install_staged_incumbent(stage, root)
+
+    assert (root / "incumbent.txt").read_bytes() == b"incumbent"
+    assert not (root / "replacement.txt").exists()
+    assert stage.exists()
+    assert not tuple(tmp_path.glob(f".{root.name}.bootstrap-backup-*"))
+
+    monkeypatch.setattr(bootstrap.os, "replace", real_replace)
+    bootstrap._install_staged_incumbent(stage, root)
+    assert (root / "replacement.txt").read_bytes() == b"replacement"
+    assert not (root / "incumbent.txt").exists()
+
+
 def test_context_v1_registered_summary_identity_accepts_attested_folds_and_rejects_tampering(
     tmp_path: Path, monkeypatch
 ):
