@@ -137,6 +137,21 @@ means the stated import/reproduction/parity proof remains required.
 
 ## Ambiguities and blockers to isolate, not guess
 
+* **Task 3 macro producer stop gate (2026-09-15):** a legal raw session was
+  paired with `cache/sessions/` and `cache/slide/fold0_val.npz`.  The raw
+  parser arrays equal the session cache and the legacy
+  `scripts/slide_features.py:_process_session` output equals the selected 278
+  slide rows, including finite float32 bytes and NaN representation.  The
+  recorded fixture hashes and fingerprints are in
+  `tests/fixtures/release_160afaf81debf1ee/fixture_manifest.json`.  However,
+  the direct legacy producer/cache is **62-D**, while the frozen release's
+  model-facing macro schema is **63-D** because `runner._with_time_prior`
+  appends its one frozen column after cache loading.  This violates Task 3's
+  requested single 63-D canonical producer ABI.  Under the plan's explicit
+  stop rule, `scripts/slide_features.py`, macro extraction, runner, and micro
+  cache remain unchanged.  Resolve the layer-boundary contract in a new,
+  release-safe plan before resuming this extraction.
+
 * **Official competition adapter:** `Resources/试题.txt` describes scoring,
   but this audit found no authoritative final machine input/output file schema
   or runner contract.  `dist/submission/main.py` must therefore isolate the

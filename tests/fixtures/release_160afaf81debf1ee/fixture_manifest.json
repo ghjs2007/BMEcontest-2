@@ -11,6 +11,25 @@
       "generation_command": "python scripts/bootstrap_event_stack_diagnostics.py --run-key 160afaf81debf1ee"
     }
   ],
+  "macro_golden": {
+    "status": "blocked-width-contract-mismatch",
+    "session_id": "sensorData-1784557420727-0d3173bc005b4fc2ace0e8975005334a",
+    "raw_source": "Data/<sensor-original-data>/sensorData-1784557420727-0d3173bc005b4fc2ace0e8975005334a/collect_data4_1784552718_1784557121.txt",
+    "raw_source_sha256": "a8a1c108916e0a6204a01655932ec44fdee55462b777f6f6ceb1ebc0719cb29f",
+    "session_cache": "cache/sessions/sensorData-1784557420727-0d3173bc005b4fc2ace0e8975005334a.npz",
+    "session_cache_sha256": "d1e8866455adf2c482217df53127c2b79749dc6b0c926f39fd86a9c8f6cfac75",
+    "slide_cache": "cache/slide/fold0_val.npz",
+    "slide_cache_sha256": "8c4938ea70118eb934a95ca11c32f15c74e3c93baa6eed1effd5088302a34cc3",
+    "mode": "val",
+    "legacy_producer": "scripts/slide_features.py:_process_session",
+    "generation_command": "python -c \"import scripts.slide_features as sf; sf._process_session((sid, meals_json, 'val'))\"",
+    "window_rows_sha256": "9c304b17b33b1d949933857adef6f166af4c06f6811332390b3a264e2bdd3d0c",
+    "feature_matrix_sha256": "30df7968694d6beb4fdf25700e903cad88ae837138d180c5cfbec2647483d7a8",
+    "feature_dtype": "<f4",
+    "feature_shape": [278, 62],
+    "raw_cache_array_hashes_match": true,
+    "note": "The legacy producer and selected slide rows match exactly after canonical JSON window serialization. Extraction is blocked because the required macro producer contract is 63-D whereas this direct promoted slide evidence is 62-D; runner adds the frozen time-prior column later."
+  },
   "hashes": {
     "spans": {"sha256": "6c66b25d3b78b53908317f8315d335f63a9fa36233a21c5a1af8f587f0ef7be4", "source": "models/event_stack/160afaf81debf1ee/outer-fold-0/diagnostics.json", "representation": "aggregate evidence alias; not direct raw-session spans"},
     "features": {"sha256": "939ed3a65787abf68675a95704281490ab2519cfe1c5512a4118d5837b8aa34d", "source": "models/event_stack/160afaf81debf1ee/deployment/feature_schema.json", "representation": "schema evidence alias; not a feature matrix"},
