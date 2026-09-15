@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 def _write_collect_data(path: Path) -> Path:
@@ -17,6 +18,24 @@ def test_discover_raw_session_folder(tmp_path: Path):
 
     raw = _write_collect_data(tmp_path / "S01" / "collect_data1_2_3.txt")
     assert discover_raw_sessions(raw.parent) == (RawSessionSource(raw, "S01", None),)
+
+
+def test_directory_source_loads_legacy_sorted_first_collect_data_file(tmp_path: Path):
+    from src.pipeline.io.raw_session import RawSessionSource, load_raw_session
+
+    directory = tmp_path / "S01"
+    _write_collect_data(directory / "collect_data9_9_9.txt")
+    first = _write_collect_data(directory / "collect_data1_2_3.txt")
+    session = load_raw_session(RawSessionSource(directory, "S01", None))
+    assert session.meta["path"] == str(first)
+
+
+def test_direct_source_rejects_non_collect_data_name(tmp_path: Path):
+    from src.pipeline.io.raw_session import RawSessionSource, load_raw_session
+
+    raw = _write_collect_data(tmp_path / "not_collect_data.txt")
+    with pytest.raises(ValueError, match="collect_data"):
+        load_raw_session(RawSessionSource(raw, "fixture", None))
 
 
 def test_canonical_reader_preserves_legacy_parser_arrays(tmp_path: Path):

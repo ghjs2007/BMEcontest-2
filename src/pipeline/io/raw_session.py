@@ -92,9 +92,7 @@ def load_raw_session(source: RawSessionSource) -> SessionData:
     """Load a raw source; reading it never creates a cache artifact."""
     if source.path.is_dir():
         sources = discover_raw_sessions(source.path)
-        if len(sources) != 1:
-            raise ValueError(f"expected exactly one raw session in {source.path}")
         source = sources[0]
-    if source.path.suffix.lower() != ".txt":
+    if source.path.suffix.lower() != ".txt" or not re.fullmatch(r"collect_data\d+_\d+_\d+\.txt", source.path.name):
         raise ValueError("supported raw session input is collect_data*.txt")
     return _parse_collect_data_tsv(source.path)
