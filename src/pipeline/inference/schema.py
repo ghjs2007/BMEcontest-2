@@ -55,6 +55,33 @@ def validate_prediction(value: Mapping[str, object]) -> None:
     for optional in ("timeline", "candidates", "gaps"):
         if optional in value and not isinstance(value[optional], (Mapping, list)):
             raise ValueError(f"prediction {optional} is invalid")
+    if "timeline" in value:
+        timeline = value["timeline"]
+        if (not isinstance(timeline, Mapping) or set(timeline) != {"session_ids", "macro_windows", "micro_windows"}
+                or not isinstance(timeline["session_ids"], list) or not all(isinstance(item, str) and item for item in timeline["session_ids"])
+                or len(set(timeline["session_ids"])) != len(timeline["session_ids"])
+                or any(isinstance(timeline[name], bool) or not isinstance(timeline[name], int) or timeline[name] < 0 for name in ("macro_windows", "micro_windows"))):
+            raise ValueError("prediction timeline is invalid")
+    if "candidates" in value:
+        for candidate in value["candidates"]:
+            if (not isinstance(candidate, Mapping) or set(candidate) != {"session_id", "start_ms", "end_ms", "score", "admitted"}
+                    or not isinstance(candidate["session_id"], str) or not candidate["session_id"]
+                    or any(isinstance(candidate[name], bool) or not isinstance(candidate[name], int) for name in ("start_ms", "end_ms"))
+                    or candidate["end_ms"] <= candidate["start_ms"] or not isinstance(candidate["admitted"], bool)):
+                raise ValueError("prediction candidates is invalid")
+            try:
+                score = float(candidate["score"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("prediction candidates is invalid") from exc
+            if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+                raise ValueError("prediction candidates is invalid")
+    if "gaps" in value:
+        for gap in value["gaps"]:
+            if (not isinstance(gap, Mapping) or set(gap) != {"session_id", "start_ms", "end_ms"}
+                    or not isinstance(gap["session_id"], str) or not gap["session_id"]
+                    or any(isinstance(gap[name], bool) or not isinstance(gap[name], int) for name in ("start_ms", "end_ms"))
+                    or gap["end_ms"] <= gap["start_ms"]):
+                raise ValueError("prediction gaps is invalid")
     seen_ids: set[int] = set()
     for index, event in enumerate(events):
         if not isinstance(event, Mapping) or set(event) != {"id", "session_id", "start_ms", "end_ms", "duration_s", "confidence"}:

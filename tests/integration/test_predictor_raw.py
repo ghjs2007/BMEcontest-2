@@ -27,6 +27,14 @@ def _constant_raw_file(path: Path, rows: int = 25_200) -> Path:
     return path
 
 
+def _gapped_raw_file(path: Path) -> Path:
+    path = _raw_file(path)
+    values = "\t".join(["1"] * 44 + ["1", "2", "3", "4", "5", "6"])
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"10000\t10000\t10000\t{values}\n10050\t10050\t10050\t{values}\n")
+    return path
+
+
 def test_predictor_raw_file_needs_no_precomputed_feature_payload(tmp_path: Path):
     """Replacing raw inference with a feature-payload requirement is a regression."""
     from src.pipeline.inference import Predictor
@@ -63,3 +71,33 @@ def test_constant_raw_session_uses_frozen_model_imputation_without_cache_writes(
     result = Predictor.from_bundle(Path("dist/event_stack/bundle")).predict_file(raw)
     validate_prediction(result)
     assert result["diagnostics"]["coverage"] == 1.0
+
+
+def test_predictor_include_flags_emit_valid_structured_debug_data(tmp_path: Path):
+    """Changing include flags into untyped ad-hoc JSON would break visualization."""
+    from src.pipeline.inference import PredictionOptions, Predictor
+    from src.pipeline.inference.schema import validate_prediction
+
+    raw = _gapped_raw_file(tmp_path / "S01" / "collect_data1_2_3.txt")
+    result = Predictor.from_bundle(Path("dist/event_stack/bundle")).predict_file(
+        raw, options=PredictionOptions(include_timeline=True, include_candidates=True)
+    )
+    validate_prediction(result)
+    assert result["timeline"]["session_ids"] == ["collect_data1_2_3"]
+    assert result["gaps"] == [{"session_id": "collect_data1_2_3", "start_ms": 150, "end_ms": 10000}]
+    assert result["candidates"] == []
+
+
+def test_predictor_folder_keeps_multiple_files_as_distinct_sessions(tmp_path: Path):
+    """Folder inference must never merge two acquisition files into one session."""
+    from src.pipeline.inference import PredictionOptions, Predictor
+    from src.pipeline.inference.schema import validate_prediction
+
+    folder = tmp_path / "S01"
+    _raw_file(folder / "collect_data9_9_9.txt")
+    _raw_file(folder / "collect_data1_2_3.txt")
+    result = Predictor.from_bundle(Path("dist/event_stack/bundle")).predict_folder(
+        folder, subject_id="person-a", options=PredictionOptions(include_timeline=True)
+    )
+    validate_prediction(result)
+    assert result["timeline"]["session_ids"] == ["S01:collect_data1_2_3", "S01:collect_data9_9_9"]

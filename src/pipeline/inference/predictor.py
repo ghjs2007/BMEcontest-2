@@ -139,6 +139,7 @@ class Predictor:
         micro_rows: list[np.ndarray] = []
         bounds: dict[str, tuple[int, int]] = {}
         source_names: list[str] = []
+        gap_rows: list[dict[str, object]] = []
         total_duration = 0.0
         covered_duration = 0.0
         subject_by_sid: dict[str, str] = {}
@@ -152,6 +153,8 @@ class Predictor:
                 bounds[sid] = (min(span.start_ms for span in spans), max(span.end_ms for span in spans))
                 total_duration += (bounds[sid][1] - bounds[sid][0]) / 1000.0
                 covered_duration += sum((span.end_ms - span.start_ms) / 1000.0 for span in spans)
+                for left, right in zip(spans, spans[1:]):
+                    gap_rows.append({"session_id": sid, "start_ms": left.end_ms, "end_ms": right.start_ms})
             subject_by_sid[sid] = source.subject_id or sid
             macro = extract_macro_windows(session, session_id=sid, config=self._macro_config)
             micro = extract_micro_windows(session, session_id=sid, config=self._micro_config)
@@ -195,6 +198,10 @@ class Predictor:
         if options.include_candidates:
             result["candidates"] = [{"session_id": c.event.sid, "start_ms": c.event.start_ms, "end_ms": c.event.end_ms, "score": float(score), "admitted": index in set(admitted_indices)} for index, (c, score) in enumerate(zip(candidates, scored))]
         if options.include_timeline:
-            result["timeline"] = {"macro_windows": len(macro_windows), "micro_windows": len(micro_windows)}
+            result["timeline"] = {
+                "session_ids": [source.session_id for source in sources],
+                "macro_windows": len(macro_windows), "micro_windows": len(micro_windows),
+            }
+            result["gaps"] = gap_rows
         validate_prediction(result)
         return result

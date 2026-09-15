@@ -26,3 +26,23 @@ def test_prediction_schema_rejects_nonfinite_confidence_and_invalid_diagnostics(
     result["diagnostics"] = {"coverage": 1.2, "warnings": ["ok"]}
     with pytest.raises(ValueError, match="event 0|diagnostics"):
         validate_prediction(result)
+
+
+def test_prediction_schema_rejects_malformed_optional_debug_blocks():
+    """A frontend must not receive ambiguous timeline/candidate/gap records."""
+    import pytest
+
+    result = make_prediction_result(run_key="run", source="x", duration_seconds=1.0, events=[])
+    result["timeline"] = {"session_ids": ["s"], "macro_windows": -1, "micro_windows": 0}
+    with pytest.raises(ValueError, match="timeline"):
+        validate_prediction(result)
+
+    result = make_prediction_result(run_key="run", source="x", duration_seconds=1.0, events=[])
+    result["candidates"] = [{"session_id": "s", "start_ms": 0, "end_ms": 1, "score": float("nan"), "admitted": False}]
+    with pytest.raises(ValueError, match="candidates"):
+        validate_prediction(result)
+
+    result = make_prediction_result(run_key="run", source="x", duration_seconds=1.0, events=[])
+    result["gaps"] = [{"session_id": "s", "start_ms": 2, "end_ms": 1, "unexpected": True}]
+    with pytest.raises(ValueError, match="gaps"):
+        validate_prediction(result)
