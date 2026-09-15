@@ -553,6 +553,46 @@ def test_custom_root_active_package_also_requires_release_token(tmp_path: Path):
         )
 
 
+def test_package_transaction_callback_precedes_backup_install_and_rollback_replaces(tmp_path: Path, monkeypatch):
+    """The release journal hook runs immediately before every dist replacement."""
+
+    destination, bundle = package_fixture_bundle(tmp_path)
+    events: list[tuple[str, str, str] | tuple[str, str]] = []
+    original_replace = package_module.os.replace
+    original_verify = package_module.verify_packaged_bundle
+    verify_calls = {"count": 0}
+
+    def record_replace(source, target):
+        events.append(("replace", Path(source).name, Path(target).name))
+        return original_replace(source, target)
+
+    def fail_after_install(path):
+        verify_calls["count"] += 1
+        if verify_calls["count"] == 2:
+            raise RuntimeError("post-copy manifest failure")
+        return original_verify(path)
+
+    def before_replace(action, backup):
+        events.append(("journal", action, Path(backup).name))
+
+    monkeypatch.setattr(package_module.os, "replace", record_replace)
+    monkeypatch.setattr(package_module, "verify_packaged_bundle", fail_after_install)
+    with pytest.raises(RuntimeError, match="post-copy manifest failure"):
+        package_event_stack(
+            bundle_path=bundle,
+            destination=destination,
+            trusted_dist_root=destination.parent,
+            before_replace=before_replace,
+        )
+
+    journal_positions = {action: index for index, event in enumerate(events) if event[0] == "journal" for action in [event[1]]}
+    assert events[journal_positions["backup"] + 1][0] == "replace"
+    assert events[journal_positions["install"] + 1][0] == "replace"
+    assert events[journal_positions["rollback"] + 1][0] == "replace"
+    assert destination.is_dir()
+    assert not any(path.name.startswith(".event_stack.backup-") for path in destination.parent.iterdir())
+
+
 def test_runtime_manifest_cuda_boolean_cannot_claim_an_unregistered_adapter(tmp_path: Path):
     dist, _ = package_fixture_bundle(tmp_path)
     packaged = _load_module(dist / "predict_event_stack.py")
