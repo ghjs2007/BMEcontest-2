@@ -431,40 +431,23 @@ def build_smoke_fixture(schema: Mapping[str, object]) -> dict[str, Any]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", nargs="?", type=Path, help="raw collect_data*.txt file or session folder")
     parser.add_argument("--bundle", type=Path, default=Path(__file__).resolve().parent / "bundle")
-    parser.add_argument("--input-features", type=Path, help="schema-hashed precomputed candidate feature JSON")
+    parser.add_argument("--input-features", type=Path, required=True, help="schema-hashed precomputed candidate feature JSON")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--subject-id")
-    parser.add_argument("--include-timeline", action="store_true")
-    parser.add_argument("--include-candidates", action="store_true")
     parser.add_argument("--device", choices=_DEVICE_CHOICES, default="auto")
-    args = parser.parse_args(argv)
-    if (args.input is None) == (args.input_features is None):
-        parser.error("provide exactly one raw INPUT or --input-features")
-    return args
+    return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        if args.input_features is not None:
-            payload = _read_json(args.input_features, "input feature payload")
-            output = predict_feature_payload(args.bundle, payload, device=args.device)
-        else:
-            # Raw inference is canonical source functionality and intentionally
-            # unavailable from this legacy self-contained payload runtime.
-            from src.pipeline.inference import PredictionOptions, Predictor
-
-            predictor = Predictor.from_bundle(args.bundle, device=args.device)
-            options = PredictionOptions(args.include_timeline, args.include_candidates, args.device)
-            output = (predictor.predict_folder(args.input, subject_id=args.subject_id, options=options)
-                      if args.input.is_dir() else predictor.predict_file(args.input, subject_id=args.subject_id, options=options))
+        payload = _read_json(args.input_features, "input feature payload")
+        output = predict_feature_payload(args.bundle, payload, device=args.device)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"event-stack inference refused: {exc}", file=sys.stderr)
         return 2
     args.output.write_bytes(_canonical_json(output))
-    print(f"resolved_device={output.get('resolved_device', output.get('diagnostics', {}).get('resolved_device', 'cpu'))}")
+    print(f"resolved_device={output['resolved_device']}")
     return 0
 
 

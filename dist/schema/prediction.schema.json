@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Event-stack prediction",
+  "type": "object",
+  "required": ["schema_version", "model", "input", "events", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "model": {"type": "object", "required": ["name", "run_key"]},
+    "input": {"type": "object", "required": ["source", "duration_seconds"]},
+    "events": {"type": "array"},
+    "diagnostics": {"type": "object"}
+  }
+}

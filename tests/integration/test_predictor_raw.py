@@ -1,0 +1,41 @@
+from pathlib import Path
+
+
+def _raw_file(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = "ACC_TIME\tPPG_TIME\tGYRO_TIME\t" + "\t".join(f"v{i}" for i in range(50)) + "\n"
+    values = ["1"] * 44 + ["1", "2", "3", "4", "5", "6"]
+    path.write_text(
+        header
+        + "100\t200\t100\t" + "\t".join(values) + "\n"
+        + "150\t250\t150\t" + "\t".join(values) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_predictor_raw_file_needs_no_precomputed_feature_payload(tmp_path: Path):
+    """Replacing raw inference with a feature-payload requirement is a regression."""
+    from src.pipeline.inference import Predictor
+    from src.pipeline.inference.schema import validate_prediction
+
+    raw = _raw_file(tmp_path / "S01" / "collect_data1_2_3.txt")
+    bundle = Path("dist/event_stack/bundle")
+    result = Predictor.from_bundle(bundle).predict_file(raw, subject_id="fixture-subject")
+    validate_prediction(result)
+    assert result["model"]["run_key"] == "160afaf81debf1ee"
+    assert result["input"]["source"] == str(raw)
+
+
+def test_predictor_rejects_unregistered_cuda(tmp_path: Path):
+    """Changing forced CUDA from refusal to silent CPU fallback is unsafe."""
+    from src.pipeline.inference import Predictor
+
+    raw = _raw_file(tmp_path / "S01" / "collect_data1_2_3.txt")
+    predictor = Predictor.from_bundle(Path("dist/event_stack/bundle"))
+    try:
+        predictor.predict_file(raw, options=predictor.options(device="cuda"))
+    except RuntimeError as exc:
+        assert "CUDA" in str(exc)
+    else:
+        raise AssertionError("forced CUDA must be refused without an audited adapter")

@@ -664,12 +664,12 @@ def write_event_stack_bundle(
 
 
 def load_event_stack_bundle(
-    destination: Path, *, expected_role: str | None = None
+    destination: Path, *, expected_role: str | None = None, expected_run_key: str | None = None
 ) -> EventStackBundle:
     """Load a bundle only after all serialized files pass manifest verification."""
 
     destination = Path(destination)
-    problems = verify_bundle_manifest(destination)
+    problems = verify_bundle_manifest(destination, expected_run_key=expected_run_key)
     if problems:
         raise ValueError("bundle manifest verification failed: " + "; ".join(problems))
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
