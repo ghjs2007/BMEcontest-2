@@ -26,7 +26,7 @@
 |---|---|
 | src/pipeline/io/raw_session.py | Raw file/folder discovery and side-effect-free SessionData loading. |
 | src/pipeline/preprocessing/timeline.py | Time validation, spans, gaps and eligible windows. |
-| src/pipeline/features/{macro,micro}.py | Canonical 63-D/47-D feature window production. |
+| src/pipeline/features/{macro,micro}.py | Canonical raw 62-D macro and 47-D micro feature window production; frozen 62-to-63 macro time-prior adapter. |
 | src/pipeline/inference/{predictor,schema,legacy_payload,competition_adapter}.py | Predictor API, public JSON, legacy compatibility, isolated adapter. |
 | scripts/{build_inference_distribution,build_submission}.py | Deterministic distribution builders. |
 | dist/{inference,visual,submission,examples,schema}/ | Generated inference, frontend contract, generated submission, safe example, schema. |
@@ -150,23 +150,30 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
 - Test: tests/unit/test_macro_features.py, tests/parity/test_feature_producer_parity.py
 
 **Interfaces:**
-- Produces extract_macro_windows(session, *, session_id, config) -> MacroWindowBatch and extract_micro_windows(session, *, session_id, config: MicroFeatureConfig) -> MicroWindowBatch.
-- Exact contracts: macro (n,63); micro (m,47); current numerical primitive remains extract_micro_features.
+- Produces extract_macro_windows(session, *, session_id, config) -> MacroWindowBatch62, add_time_prior(features_62: np.ndarray, windows: Sequence[EventRef]) -> np.ndarray, and extract_micro_windows(session, *, session_id, config: MicroFeatureConfig) -> MicroWindowBatch.
+- Exact contracts: raw macro (n,62), model-facing macro (n,63), micro (m,47). add_time_prior is a separate pure frozen adapter matching runner._with_time_prior exactly; current numerical primitive remains extract_micro_features.
 - Macro truth is the behavior in `scripts/slide_features.py`, with `cache/slide/` as the promoted golden-evidence source.  Task 3 may not move or alter macro code until a legal raw session can be paired to its cache/slide record and recorded in the fixture manifest.
 
 - [ ] **Step 1: Capture real-session macro golden fixtures and write failing byte/NaN/window tests.**
 
-Before extracting any macro code, add the legal source-session identifier, raw-source fingerprint, cache/slide path, schema, ordered window-row SHA-256 and feature-matrix SHA-256 to fixture_manifest.json.  The capture command must call the existing scripts/slide_features.py production path and serialize its output with unchanged dtype/NaN representation.
+Before extracting any macro code, add the legal source-session identifier, raw-source fingerprint, cache/slide path, ordered window-row SHA-256, raw-62 matrix SHA-256, adapted-63 matrix SHA-256, raw-62 schema SHA-256, adapted-63 schema SHA-256 and add_time_prior adapter SHA-256 to fixture_manifest.json. The capture command must call the existing scripts/slide_features.py production path and serialize unchanged dtype/NaN representation.
 
-    def test_macro_is_63d_and_never_crosses_gap():
+    def test_raw_macro_is_62d_and_never_crosses_gap():
         batch = extract_macro_windows(gapped_session, session_id="s1", config=MACRO_CONFIG)
-        assert batch.features.shape[1] == 63
+        assert batch.features.shape[1] == 62
         assert all(w.end_ms <= 1_000 or w.start_ms >= 10_000 for w in batch.windows)
+
+    def test_frozen_time_prior_adapts_exactly_to_63d():
+        raw_62, windows = raw_macro_fixture()
+        adapted = add_time_prior(raw_62, windows)
+        assert adapted.shape == (len(windows), 63)
+        np.testing.assert_allclose(adapted, runner._with_time_prior(raw_62, windows), rtol=0, atol=0, equal_nan=True)
 
     def test_slide_features_golden_session_is_exact_before_extraction(golden_raw_session):
         old = run_slide_features_legacy(golden_raw_session)
         assert canonical_window_rows_sha256(old.windows) == GOLDEN["macro_window_rows_sha256"]
-        assert matrix_sha256_preserving_nan_bits(old.features) == GOLDEN["macro_feature_matrix_sha256"]
+        assert matrix_sha256_preserving_nan_bits(old.features_62) == GOLDEN["macro_62_matrix_sha256"]
+        assert matrix_sha256_preserving_nan_bits(old.features_63) == GOLDEN["macro_63_matrix_sha256"]
 
     def test_micro_delegates_to_frozen_47d_primitive(monkeypatch):
         monkeypatch.setattr(features_micro, "extract_micro_features", lambda a, g, hz: np.zeros(47, np.float32))
@@ -180,7 +187,7 @@ Expected: the new golden test fails before fixture registration. If the cache/sl
 
 - [ ] **Step 3: Extract existing mathematics, then redirect cache/training callers.**
 
-Port macro math from scripts/slide_features.py verbatim; do not infer it from width. Keep WindowBatch ABI and adapt only at module boundary. Make scripts/slide_features.py import the extracted producer only after the real-session golden test passes.
+Port only raw 62-D macro mathematics from scripts/slide_features.py verbatim; do not infer it from width. Implement the separately named pure add_time_prior adapter by moving runner._with_time_prior without changing its calculation. Keep WindowBatch ABI and apply add_time_prior only at the existing model-facing boundary. Make scripts/slide_features.py import extracted raw producer and adapter only after real-session goldens pass.
 
     def extract_micro_windows(session, *, session_id, config):
         rows, windows = [], []
@@ -193,17 +200,22 @@ Port macro math from scripts/slide_features.py verbatim; do not infer it from wi
 
 - [ ] **Step 4: Write exact cache-feature parity test.**
 
-    def test_canonical_features_match_promoted_fixture():
+    def test_macro_62_adapter_and_model_facing_63_match_promoted_fixture():
         legacy_macro, legacy_micro = load_promoted_feature_fixture()
         macro, micro = build_features_from_same_raw_fixture()
         assert_event_rows_equal(legacy_macro.windows, macro.windows)
-        assert matrix_sha256_preserving_nan_bits(macro.features) == GOLDEN["macro_feature_matrix_sha256"]
-        assert_nan_masks_equal(legacy_macro.features, macro.features)
-        np.testing.assert_allclose(legacy_macro.features, macro.features, rtol=0, atol=0, equal_nan=True)
+        assert matrix_sha256_preserving_nan_bits(macro.features_62) == GOLDEN["macro_62_matrix_sha256"]
+        assert_nan_masks_equal(legacy_macro.features_62, macro.features_62)
+        np.testing.assert_allclose(legacy_macro.features_62, macro.features_62, rtol=0, atol=0, equal_nan=True)
+        adapted = add_time_prior(macro.features_62, macro.windows)
+        runner_adapted = runner._with_time_prior(macro.features_62, macro.windows)
+        assert matrix_sha256_preserving_nan_bits(adapted) == GOLDEN["macro_63_matrix_sha256"]
+        np.testing.assert_allclose(adapted, runner_adapted, rtol=0, atol=0, equal_nan=True)
+        np.testing.assert_allclose(adapted, legacy_macro.features_63, rtol=0, atol=0, equal_nan=True)
         assert_event_rows_equal(legacy_micro.windows, micro.windows)
         np.testing.assert_allclose(legacy_micro.features, micro.features, rtol=0, atol=0, equal_nan=True)
 
-The macro test must compare every ordered window ID/start/end, byte-level finite values, and NaN mask before accepting the extracted module. Shape-only equality is insufficient.
+The macro gate is three-way: legacy raw 62-D equals canonical raw 62-D; add_time_prior equals runner._with_time_prior; adapted 63-D equals legacy model-facing 63-D. Compare every ordered window ID/start/end, byte-level finite values and NaN mask. Shape-only equality is insufficient.
 
 - [ ] **Step 5: Verify and commit.**
 
@@ -265,7 +277,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
             context_features_version="v1", session_bounds_by_sid=self._bounds(batches))
         return self._prediction_result(self._apply_models_admission_policy(candidates, verifier), options)
 
-Use bundle schema to assert 63/47/116 at each model boundary. Reuse existing candidate, Context-v1, admission and event-policy functions. Keep old serialized interface under legacy_payload.predict_feature_payload; do not delete it here.
+Predictor uses canonical raw macro 62-D only up to the frozen add_time_prior adapter, then asserts model-facing 63/47/116 widths at model boundaries. Reuse existing candidate, Context-v1, admission and event-policy functions. Keep old serialized interface under legacy_payload.predict_feature_payload; do not delete it here.
 
 - [ ] **Step 4: Thin CLI.**
 
@@ -286,14 +298,14 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
 - Modify: tests/fixtures/release_160afaf81debf1ee/fixture_manifest.json
 
 **Interfaces:**
-- Produces internal InferenceTrace with spans, macro/micro/context matrices, probabilities, candidates, admitted rows, verifier scores and events.
+- Produces internal InferenceTrace with spans, raw macro-62, adapted macro-63, micro/context matrices, probabilities, candidates, admitted rows, verifier scores and events.
 
 - [ ] **Step 1: Write failing trace parity test.**
 
     def test_legacy_canonical_predictor_trace_is_identical(fixture, bundle):
         old, direct, predictor = legacy_trace(fixture, bundle), canonical_trace(fixture, bundle), Predictor.from_bundle(bundle).trace_file(fixture.raw)
         assert old.spans == direct.spans == predictor.spans
-        for left, right in ((old.macro_features, predictor.macro_features), (old.micro_features, predictor.micro_features), (old.context_features, predictor.context_features)):
+        for left, right in ((old.macro_features_62, predictor.macro_features_62), (old.macro_features_63, predictor.macro_features_63), (old.micro_features, predictor.micro_features), (old.context_features, predictor.context_features)):
             np.testing.assert_allclose(left, right, rtol=1e-12, atol=1e-12, equal_nan=True)
         np.testing.assert_allclose(old.verifier_scores, predictor.verifier_scores, rtol=1e-12, atol=1e-12)
         assert old.candidates == predictor.candidates
@@ -309,7 +321,8 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity
     @dataclass(frozen=True)
     class InferenceTrace:
         spans: tuple[tuple[str, int, int], ...]  # session ID, inclusive start, inclusive end
-        macro_features: np.ndarray
+        macro_features_62: np.ndarray
+        macro_features_63: np.ndarray
         micro_features: np.ndarray
         context_features: np.ndarray
         macro_probabilities: np.ndarray
