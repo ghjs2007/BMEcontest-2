@@ -209,6 +209,58 @@ def test_package_failure_leaves_recoverable_old_release(tmp_path: Path, monkeypa
     assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == registry
 
 
+def test_registry_write_failure_recovers_complete_new_pair(tmp_path: Path, monkeypatch):
+    """Once dist is installed, a registry write failure resumes the candidate pair."""
+
+    import scripts.release_event_stack as release_module
+
+    root, _ = _release_fixture(tmp_path)
+    candidate = _distinct_candidate(root)
+    shutil.rmtree(root / "dist/event_stack")
+    shutil.copytree(Path("dist/event_stack"), root / "dist/event_stack")
+    summary = root / "candidate.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": 0.9}}), encoding="utf-8")
+    deployment = root / "models/event_stack" / str(candidate["run_key"]) / "deployment"
+    monkeypatch.setattr(release_module, "promote_summary", lambda *_args, **_kwargs: (deployment,))
+    original_write = release_module._atomic_write
+    failed = {"value": False}
+    def fail_registry(path, contents):
+        if path.name == "event_stack_incumbent.json" and not failed["value"]:
+            failed["value"] = True
+            raise OSError("registry write failure")
+        return original_write(path, contents)
+    monkeypatch.setattr(release_module, "_atomic_write", fail_registry)
+
+    with pytest.raises(OSError, match="registry write failure"):
+        release_module.release_summary(summary, root=root)
+    assert release_module._journal_path(root).exists()
+    monkeypatch.setattr(release_module, "_atomic_write", original_write)
+    release_module.recover_release_transaction(root)
+    assert not release_module._journal_path(root).exists()
+    assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == candidate
+
+
+def test_post_copy_manifest_failure_recovers_complete_new_pair(tmp_path: Path, monkeypatch):
+    """A package error after its swap leaves prepared journal, then detects new dist."""
+
+    import scripts.release_event_stack as release_module
+
+    root, _ = _release_fixture(tmp_path)
+    candidate = _distinct_candidate(root)  # models a successfully copied new dist
+    summary = root / "candidate.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": 0.9}}), encoding="utf-8")
+    deployment = root / "models/event_stack" / str(candidate["run_key"]) / "deployment"
+    monkeypatch.setattr(release_module, "promote_summary", lambda *_args, **_kwargs: (deployment,))
+    monkeypatch.setattr(release_module, "package_event_stack", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("post-copy manifest failure")))
+
+    with pytest.raises(RuntimeError, match="post-copy manifest failure"):
+        release_module.release_summary(summary, root=root)
+    assert release_module._journal_path(root).exists()
+    release_module.recover_release_transaction(root)
+    assert not release_module._journal_path(root).exists()
+    assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == candidate
+
+
 def test_recovery_after_dist_phase_finishes_a_verified_new_pair(tmp_path: Path):
     from scripts.release_event_stack import _journal_path, _stable_json_bytes, _tree_hash, recover_release_transaction
 
