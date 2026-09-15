@@ -50,7 +50,6 @@ from src.pipeline.candidate_control import (
 )
 from src.pipeline.crossfit import crossfit_predict_proba
 from src.pipeline.event_stack import (
-    _GLOBAL_PRIOR,
     CandidateEvent,
     MultiScaleCandidate,
     DensityConfig,
@@ -708,14 +707,10 @@ def _groups_for(
 
 
 def _with_time_prior(features: np.ndarray, windows: Sequence[EventRef]) -> np.ndarray:
-    prior = np.asarray(
-        [
-            _GLOBAL_PRIOR[int((window.start_ms / 3.6e6) % 24)]
-            for window in windows
-        ],
-        dtype=np.float32,
-    ).reshape((-1, 1))
-    return np.concatenate((np.asarray(features), prior), axis=1)
+    """Legacy model-boundary name retained for frozen caller compatibility."""
+    from src.pipeline.features.macro import add_time_prior
+
+    return add_time_prior(features, windows)
 
 
 def _window_estimator(seed: int) -> Pipeline:

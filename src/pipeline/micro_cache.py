@@ -14,9 +14,8 @@ import numpy as np
 
 from src.data import manifests
 from src.pipeline.imu_features import MicroFeatureConfig
-from src.pipeline.imu_features import extract_micro_features, gravity_rotation
+from src.pipeline.features.micro import extract_micro_windows
 from src.pipeline.io.raw_session import SessionData
-from src.pipeline.preprocessing.timeline import valid_imu_spans, window_starts
 
 
 MICRO_EXTRACTION_VERSION = 1
@@ -211,32 +210,16 @@ def _session_rows(task) -> MicroCacheArrays:
         t_acc=time_ms, t_ppg=np.full(len(time_ms), -1, dtype=np.int64),
         imu_valid=np.ones(len(time_ms), dtype=bool), ppg_valid=np.zeros(len(time_ms), dtype=bool), meta={},
     )
-    features, labels, windows = [], [], []
-    for span in valid_imu_spans(session):
-        timestamps = span.timestamps_ms
-        positive_deltas = np.diff(timestamps)
-        positive_deltas = positive_deltas[positive_deltas > 0]
-        if not len(positive_deltas):
-            continue
-        sample_period_ms = float(np.median(positive_deltas))
-        sample_rate_hz = 1000.0 / sample_period_ms
-        indices = span.row_indices
-        span_acc, span_gyro = acc[:, indices], gyro[:, indices]
-        if config.gravity_align:
-            rotation = gravity_rotation(np.median(span_acc, axis=1))
-            span_acc, span_gyro = rotation @ span_acc, rotation @ span_gyro
-        for start in window_starts(span, config.window_ms, config.stride_ms, config.coverage_min):
-            end = int(start + config.window_ms)
-            left, right = np.searchsorted(timestamps, (start, end))
-            features.append(extract_micro_features(span_acc[:, left:right], span_gyro[:, left:right], sample_rate_hz))
-            labels.append(label_micro_window(int(start), end, meals))
-            windows.append(json.dumps((session_id, int(start), end)))
-    if not features:
+    batch = extract_micro_windows(session, session_id=session_id, config=config)
+    if not len(batch.windows):
         return _empty_micro_arrays()
     return MicroCacheArrays(
-        np.asarray(features, dtype=np.float32).reshape(-1, 47),
-        np.asarray(labels, dtype=np.int8),
-        np.asarray(windows),
+        batch.features,
+        np.asarray(
+            [label_micro_window(window.start_ms, window.end_ms, meals) for window in batch.windows],
+            dtype=np.int8,
+        ),
+        np.asarray([json.dumps((window.sid, window.start_ms, window.end_ms)) for window in batch.windows]),
     )
 
 

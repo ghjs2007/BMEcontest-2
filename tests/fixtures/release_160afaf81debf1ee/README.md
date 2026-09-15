@@ -13,7 +13,7 @@ Any future fixture must be generated from a legally distributable source and
 recorded in `fixture_manifest.json` with its schema and SHA-256 hashes. Do not
 copy raw data into this repository.
 
-## Task 3 stop-gate record
+## Task 3 macro parity record
 
 The manifest now records one legal raw/session-cache/slide-cache pairing.  Its
 raw parser arrays match the paired session cache, and the legacy
@@ -21,14 +21,12 @@ raw parser arrays match the paired session cache, and the legacy
 rows exactly after canonical window-row serialization.  The evidence is 278
 rows by **62** `float32` columns.
 
-Task 3 requires a canonical macro producer with a 63-column contract.  The
-extra promoted column is the frozen time prior added later by
-`runner._with_time_prior`, not an output of `slide_features.py`.  Therefore the
-direct golden evidence cannot prove a 63-D extraction without changing the
-layer boundary.  Per the delivery plan's stop gate, no macro code has been
-extracted or changed.  A later explicitly approved plan must first define and
-test the 62-D raw feature batch plus the separate frozen 1-D time-prior model
-adapter, or revise the producer ABI without changing the release.
+The approved ABI resolves the two layers explicitly: the canonical raw macro
+producer returns the historic 62-D matrix, and `add_time_prior` appends the
+separate frozen one-column model adapter.  The manifest records hashes for
+both matrices and schemas, as well as the adapter source.  Three-way parity
+must remain exact: legacy 62-D equals canonical 62-D; the adapter equals the
+legacy runner boundary; and adapted 63-D equals the frozen model-facing matrix.
 
 Generation command (metadata only):
 

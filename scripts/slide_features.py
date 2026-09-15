@@ -17,73 +17,18 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import scipy.signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import src.config as config
 from src.data import manifests, splits, loader
+from src.pipeline.features.macro import extract_macro_features
 
 WIN_MS = 240_000
 STRIDE_MS = 15_000
 NEG_BUFFER_S = 300
 COV_MIN = 0.80
-STATS = ("mean", "std", "median", "p10", "p25", "p75", "p90", "p90_p10", "iqr", "rms", "mad")
-POSE_STATS = ("mean", "median", "p10", "p25", "p75", "p90", "rms")
 OUT = config.CACHE_DIR / "slide"
-
-
-def _stats(x, names=STATS):
-    """x: (n,) 有效样本 → 按 names 顺序的统计（默认 11 项）。"""
-    x = x.astype(np.float64)
-    p = np.percentile(x, [10, 25, 75, 90])
-    med = float(np.median(x))
-    full = {"mean": float(x.mean()), "std": float(x.std()), "median": med,
-            "p10": p[0], "p25": p[1], "p75": p[2], "p90": p[3],
-            "p90_p10": p[3] - p[0], "iqr": p[2] - p[1],
-            "rms": float(np.sqrt((x ** 2).mean())),
-            "mad": float(np.median(np.abs(x - med)))}
-    return [full[n] for n in names]
-
-
-def _temporal_features(blocks, fs_blk=1):
-    """1s 活动包络时间特征（序列长 = 窗秒数）。blocks: (n_blk, n_samp, 3) 每 1s 三轴。"""
-    axis_range = np.percentile(blocks, 90, axis=1) - np.percentile(blocks, 10, axis=1)  # (n,3)
-    env = np.linalg.norm(axis_range, axis=1)
-    n = len(env)
-    if n < 30:
-        return np.full(11, np.nan)
-    med = float(np.median(env))
-    mad = float(np.median(np.abs(env - med)))
-    scale = max(mad, 1e-6)
-    norm = (env - med) / scale
-    sm = np.convolve(norm, np.ones(3) / 3, mode="same")
-    active_ratio = float((env > med + 2.0 * scale).mean())
-    peaks, _ = scipy.signal.find_peaks(sm, prominence=1.0, distance=2)
-    peak_rate = len(peaks) / (n / 60.0)
-    if len(peaks) >= 2:
-        gaps = np.diff(peaks)
-        peak_int_med = float(np.median(gaps))
-        peak_int_cv = float(gaps.std() / (gaps.mean() + 1e-9))
-    else:
-        peak_int_med = float(n) if len(peaks) == 1 else np.nan
-        peak_int_cv = np.nan
-    c = env - env.mean()
-    w = c * np.hanning(n)
-    pw = np.abs(np.fft.rfft(w)) ** 2
-    if pw.size > 1:
-        pw_nz = pw[1:]
-        ent = -float((pw_nz / pw_nz.sum() * np.log(pw_nz / pw_nz.sum() + 1e-12)).sum()) / np.log(pw_nz.size)
-        dom = float(np.argmax(pw_nz) / n)          # 1s 采样 → Hz
-        tot = pw_nz.sum() + 1e-12
-        def bp(a, b):
-            idx = np.arange(1, n // 2 + 1) / n
-            return float(pw_nz[(idx >= a) & (idx < b)].sum() / tot)
-        slow, mid, fast = bp(0.02, 0.08), bp(0.08, 0.20), bp(0.20, 0.45)
-    else:
-        ent = dom = slow = mid = fast = np.nan
-    return [float(np.median(env)), float(np.percentile(env, 90)), active_ratio, peak_rate,
-            peak_int_med, peak_int_cv, ent, dom, slow, mid, fast]
 
 
 def window_rows(t_v, ws, we):
@@ -206,70 +151,8 @@ def main():
 
 
 def extract_62(seg, fs):
-    """seg: (3, n) raw 行 → 62 特征。"""
-    mag = np.linalg.norm(seg, axis=0)
-    x, y, z = seg[0], seg[1], seg[2]
-    jerk = np.linalg.norm(np.diff(seg, axis=1), axis=0) * fs
-    out = []
-    for ch in (y, z, mag):                       # 11 × 3
-        out.extend(_stats(ch))
-    out.extend(_stats(x, POSE_STATS))            # acc_x 姿态 7
-    out.extend(_stats(jerk))                     # 11
-    out.extend(_temporal_from_env(seg, fs))      # 11 时间特征
-    return out
-
-
-def _temporal_from_env(seg, fs):
-    """直接在 (3,n) 上算 1s 包络序列 → 11 时间特征。"""
-    n_samp = int(fs)
-    usable = int(seg.shape[1] // n_samp) * n_samp
-    if usable < 30 * n_samp:
-        return np.full(11, np.nan)
-    blk = seg[:, :usable].reshape(3, -1, n_samp)
-    valid = (~np.isnan(blk)).all(axis=(0, 2))
-    axis_range = np.percentile(blk, 90, axis=2) - np.percentile(blk, 10, axis=2)
-    env = np.linalg.norm(axis_range, axis=0)
-    env[~valid] = np.nan
-    if (~np.isnan(env)).sum() < 0.8 * len(env):
-        return np.full(11, np.nan)
-    env = np.interp(np.arange(len(env)), np.arange(len(env))[~np.isnan(env)], env[~np.isnan(env)])
-    return _temporal_on_env(env)
-
-
-def _temporal_on_env(env):
-    """包络序列 → 11 时间特征（共享实现）。"""
-    n = len(env)
-    med = float(np.median(env))
-    mad = float(np.median(np.abs(env - med)))
-    scale = max(mad, 1e-6)
-    norm = (env - med) / scale
-    sm = np.convolve(norm, np.ones(3) / 3, mode="same")
-    active_ratio = float((env > med + 2.0 * scale).mean())
-    peaks, _ = scipy.signal.find_peaks(sm, prominence=1.0, distance=2)
-    peak_rate = len(peaks) / (n / 60.0)
-    if len(peaks) >= 2:
-        gaps = np.diff(peaks)
-        peak_int_med = float(np.median(gaps))
-        peak_int_cv = float(gaps.std() / (gaps.mean() + 1e-9))
-    else:
-        peak_int_med = float(n) if len(peaks) == 1 else np.nan
-        peak_int_cv = np.nan
-    c = env - env.mean()
-    w = c * np.hanning(n)
-    pw = np.abs(np.fft.rfft(w)) ** 2
-    if pw.size > 1:
-        pw_nz = pw[1:]
-        ent = -float((pw_nz / pw_nz.sum() * np.log(pw_nz / pw_nz.sum() + 1e-12)).sum()) / np.log(pw_nz.size)
-        dom = float(np.argmax(pw_nz) / n)
-        tot = pw_nz.sum() + 1e-12
-        def bp(a, b):
-            idx = np.arange(1, n // 2 + 1) / n
-            return float(pw_nz[(idx >= a) & (idx < b)].sum() / tot)
-        slow, mid, fast = bp(0.02, 0.08), bp(0.08, 0.20), bp(0.20, 0.45)
-    else:
-        ent = dom = slow = mid = fast = np.nan
-    return [float(np.median(env)), float(np.percentile(env, 90)), active_ratio, peak_rate,
-            peak_int_med, peak_int_cv, ent, dom, slow, mid, fast]
+    """Compatibility name; raw macro mathematics now lives in ``src``."""
+    return extract_macro_features(seg, fs)
 
 
 if __name__ == "__main__":
