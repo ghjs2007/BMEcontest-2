@@ -2,12 +2,20 @@
   "release_run_key": "160afaf81debf1ee",
   "schema_version": 1,
   "raw_data_included": false,
-  "fixtures": [],
+  "fixtures": [
+    {
+      "name": "promoted-evidence-fold-0",
+      "source": "models/event_stack/160afaf81debf1ee/outer-fold-0/diagnostics.json",
+      "raw_data_included": false,
+      "session_scope": "aggregate evidence only",
+      "generation_command": "python scripts/bootstrap_event_stack_diagnostics.py --run-key 160afaf81debf1ee"
+    }
+  ],
   "hashes": {
-    "spans": null,
-    "features": null,
-    "candidates": null,
-    "admission": null,
-    "events": null
+    "spans": {"sha256": "6c66b25d3b78b53908317f8315d335f63a9fa36233a21c5a1af8f587f0ef7be4", "source": "outer-fold-0/diagnostics.json", "representation": "attested diagnostic JSON; no raw spans copied"},
+    "features": {"sha256": "939ed3a65787abf68675a95704281490ab2519cfe1c5512a4118d5837b8aa34d", "source": "deployment/feature_schema.json", "representation": "canonical schema anchor"},
+    "candidates": {"sha256": "6d435ebb829b06b16f50e99f360cda62a516dc291b6ccb0574ce4b9ed71945a9", "source": "promotion_summary.json", "representation": "attested aggregate candidate evidence"},
+    "admission": {"sha256": "2e8235c10ed1b02f67cc7c10124b85d0e85d6e9671f1d423a24d02bec79024b5", "source": "promotion_attestation.json", "representation": "attested admission/policy binding"},
+    "events": {"sha256": "6d435ebb829b06b16f50e99f360cda62a516dc291b6ccb0574ce4b9ed71945a9", "source": "promotion_summary.json", "representation": "attested aggregate event metrics"}
   }
 }
