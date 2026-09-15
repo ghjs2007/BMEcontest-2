@@ -116,6 +116,9 @@ def test_crossfit_cli_writes_diagnostics_sibling_from_fold_result(tmp_path, monk
     assert cli.main() == 0
     diagnostic = tmp_path / "crossfit" / "fold0_diagnostic-fold.diagnostics.json"
     assert json.loads(diagnostic.read_text(encoding="utf-8")) == result.subject_diagnostics
+    from src.pipeline.diagnostics import canonical_diagnostics_bytes
+
+    assert diagnostic.read_bytes() == canonical_diagnostics_bytes(result.subject_diagnostics)
 
 
 def test_context_version_changes_experiment_and_fold_cache_keys(tmp_path: Path):

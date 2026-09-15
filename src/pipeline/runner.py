@@ -2275,9 +2275,11 @@ def write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2),
-            encoding="utf-8",
+        # Use raw LF bytes so diagnostics have the exact canonical stream that
+        # promotion attests, including on Windows where text mode translates
+        # newlines to CRLF.
+        temporary.write_bytes(
+            (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
         )
         temporary.replace(path)
     finally:
