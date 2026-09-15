@@ -41,9 +41,12 @@ def _positive_probability(model: object, features: np.ndarray, width: int, name:
     probabilities = np.asarray(model.predict_proba(values), dtype=np.float64)
     classes = np.asarray(model.classes_)
     column = np.flatnonzero(classes == 1)
-    if probabilities.shape != (len(values), 2) or len(column) != 1:
+    if probabilities.shape != (len(values), 2) or len(column) != 1 or not np.isfinite(probabilities).all():
         raise ValueError(f"{name} model returned incompatible probabilities")
-    return probabilities[:, int(column[0])]
+    positive = probabilities[:, int(column[0])]
+    if np.any(positive < 0.0) or np.any(positive > 1.0):
+        raise ValueError(f"{name} model returned incompatible probabilities")
+    return positive
 
 
 def _by_session(windows: Sequence[EventRef], scores: np.ndarray) -> dict[str, list[tuple[int, int, float]]]:
@@ -137,6 +140,7 @@ class Predictor:
         bounds: dict[str, tuple[int, int]] = {}
         source_names: list[str] = []
         total_duration = 0.0
+        covered_duration = 0.0
         subject_by_sid: dict[str, str] = {}
         for source in sources:
             session = load_raw_session(source)
@@ -147,6 +151,7 @@ class Predictor:
             if spans:
                 bounds[sid] = (min(span.start_ms for span in spans), max(span.end_ms for span in spans))
                 total_duration += (bounds[sid][1] - bounds[sid][0]) / 1000.0
+                covered_duration += sum((span.end_ms - span.start_ms) / 1000.0 for span in spans)
             subject_by_sid[sid] = source.subject_id or sid
             macro = extract_macro_windows(session, session_id=sid, config=self._macro_config)
             micro = extract_micro_windows(session, session_id=sid, config=self._micro_config)
@@ -183,10 +188,13 @@ class Predictor:
                    "confidence": confidence_by_event[(event.sid, event.start_ms, event.end_ms)]}
                   for index, event in enumerate(final)]
         result = make_prediction_result(run_key=self._run_key, source=source_names[0] if len(source_names) == 1 else str(self._bundle_path), duration_seconds=total_duration, events=events)
-        result["diagnostics"] = {"coverage": None, "warnings": [], "resolved_device": resolved_device}
+        result["diagnostics"] = {
+            "coverage": covered_duration / total_duration if total_duration else 0.0,
+            "warnings": [], "resolved_device": resolved_device,
+        }
         if options.include_candidates:
             result["candidates"] = [{"session_id": c.event.sid, "start_ms": c.event.start_ms, "end_ms": c.event.end_ms, "score": float(score), "admitted": index in set(admitted_indices)} for index, (c, score) in enumerate(zip(candidates, scored))]
         if options.include_timeline:
             result["timeline"] = {"macro_windows": len(macro_windows), "micro_windows": len(micro_windows)}
-        validate_prediction({key: result[key] for key in ("schema_version", "model", "input", "events", "diagnostics")})
+        validate_prediction(result)
         return result

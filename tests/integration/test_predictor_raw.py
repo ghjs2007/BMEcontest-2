@@ -14,6 +14,19 @@ def _raw_file(path: Path) -> Path:
     return path
 
 
+def _constant_raw_file(path: Path, rows: int = 25_200) -> Path:
+    """A real 240-second, low-information IMU session with frozen sampling rate."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = "ACC_TIME\tPPG_TIME\tGYRO_TIME\t" + "\t".join(f"v{i}" for i in range(50)) + "\n"
+    values = "\t".join(["1"] * 44 + ["1", "2", "3", "4", "5", "6"])
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(header)
+        for index in range(rows):
+            timestamp = 1_000 + index * 10
+            handle.write(f"{timestamp}\t{timestamp}\t{timestamp}\t{values}\n")
+    return path
+
+
 def test_predictor_raw_file_needs_no_precomputed_feature_payload(tmp_path: Path):
     """Replacing raw inference with a feature-payload requirement is a regression."""
     from src.pipeline.inference import Predictor
@@ -39,3 +52,14 @@ def test_predictor_rejects_unregistered_cuda(tmp_path: Path):
         assert "CUDA" in str(exc)
     else:
         raise AssertionError("forced CUDA must be refused without an audited adapter")
+
+
+def test_constant_raw_session_uses_frozen_model_imputation_without_cache_writes(tmp_path: Path):
+    """Replacing bundle imputers with inference-side filling would change frozen scores."""
+    from src.pipeline.inference import Predictor
+    from src.pipeline.inference.schema import validate_prediction
+
+    raw = _constant_raw_file(tmp_path / "S01" / "collect_data1_2_3.txt")
+    result = Predictor.from_bundle(Path("dist/event_stack/bundle")).predict_file(raw)
+    validate_prediction(result)
+    assert result["diagnostics"]["coverage"] == 1.0

@@ -1,11 +1,9 @@
-"""Standalone inference for a verified event-stack deployment bundle.
+"""Run raw canonical inference or the versioned legacy feature-payload API.
 
-The current stack has no audited raw-session-to-63/47/56-feature runtime.  Its
-public inference contract is therefore deliberately narrow: a caller supplies
-precomputed candidate features plus the bundle feature-schema SHA-256.  This
-prevents the deployment package from silently substituting a different feature
-extractor or depending on training data.  A future raw-session adapter must
-produce this exact JSON contract before it may be registered here.
+Raw positional INPUT always returns Prediction Schema 1.0.  ``--input-features``
+is retained solely as the frozen legacy payload contract: its compact event
+JSON is intentionally unchanged for deployed consumers until the standalone
+distribution is rebuilt from canonical source.
 """
 
 from __future__ import annotations

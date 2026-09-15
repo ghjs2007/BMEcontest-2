@@ -35,7 +35,7 @@ class RawSessionSource:
 
 
 def discover_raw_sessions(path: Path) -> tuple[RawSessionSource, ...]:
-    """Discover legal raw collect-data files in a single session directory."""
+    """Discover sorted raw files; a multi-file directory shares one subject, not one session."""
     path = Path(path)
     if path.is_file():
         if not re.fullmatch(r"collect_data\d+_\d+_\d+\.txt", path.name):
@@ -46,7 +46,12 @@ def discover_raw_sessions(path: Path) -> tuple[RawSessionSource, ...]:
     files = sorted(child for child in path.iterdir() if child.is_file() and re.fullmatch(r"collect_data\d+_\d+_\d+\.txt", child.name))
     if not files:
         raise FileNotFoundError(f"no collect_data txt in {path}")
-    return tuple(RawSessionSource(file, path.name, None) for file in files)
+    # A one-file directory historically represents one session named after the
+    # directory.  More files are independent acquisition sessions under one
+    # subject, so their deterministic file stem becomes part of the ID.
+    if len(files) == 1:
+        return (RawSessionSource(files[0], path.name, None),)
+    return tuple(RawSessionSource(file, f"{path.name}:{file.stem}", None) for file in files)
 
 
 def _parse_collect_data_tsv(path: Path) -> SessionData:

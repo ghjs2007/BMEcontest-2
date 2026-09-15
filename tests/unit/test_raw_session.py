@@ -20,6 +20,19 @@ def test_discover_raw_session_folder(tmp_path: Path):
     assert discover_raw_sessions(raw.parent) == (RawSessionSource(raw, "S01", None),)
 
 
+def test_discover_raw_sessions_assigns_stable_unique_ids_for_multiple_files(tmp_path: Path):
+    """Collapsing multi-file folders into one session would cross-contaminate events."""
+    from src.pipeline.io.raw_session import discover_raw_sessions
+
+    folder = tmp_path / "S01"
+    later = _write_collect_data(folder / "collect_data9_9_9.txt")
+    earlier = _write_collect_data(folder / "collect_data1_2_3.txt")
+    sources = discover_raw_sessions(folder)
+    assert [source.path for source in sources] == [earlier, later]
+    assert [source.session_id for source in sources] == ["S01:collect_data1_2_3", "S01:collect_data9_9_9"]
+    assert {source.subject_id for source in sources} == {None}
+
+
 def test_directory_source_loads_legacy_sorted_first_collect_data_file(tmp_path: Path):
     from src.pipeline.io.raw_session import RawSessionSource, load_raw_session
 
