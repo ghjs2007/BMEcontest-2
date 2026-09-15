@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Mapping
@@ -97,6 +98,38 @@ def _active_dist_matches_candidate(root: Path, candidate: Mapping[str, object]) 
     run_key = candidate.get("run_key")
     if not isinstance(run_key, str):
         return False
+
+
+def _journal_backup(root: Path, journal: Mapping[str, object]) -> Path | None:
+    value = journal.get("backup_dist_path")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PromotionContractError("release journal backup path is invalid")
+    backup = Path(value)
+    dist = (root / "dist").resolve()
+    try:
+        backup.resolve(strict=False).relative_to(dist)
+    except ValueError as exc:
+        raise PromotionContractError("release journal backup path is outside dist") from exc
+    if not backup.name.startswith(".event_stack.backup-"):
+        raise PromotionContractError("release journal backup path is invalid")
+    return backup
+
+
+def _restore_backup(root: Path, journal: Mapping[str, object], registry_path: Path, previous: Mapping[str, object]) -> None:
+    backup = _journal_backup(root, journal)
+    destination = root / "dist" / "event_stack"
+    if backup is None or not backup.is_dir():
+        raise PromotionContractError("active dist does not match transaction and no verified backup exists")
+    verify_packaged_bundle(backup)
+    _atomic_write(registry_path, _stable_json_bytes(previous))
+    rollback = {**journal, "phase": "prepared"}
+    _write_journal(root, rollback)  # fsync immediately before rollback replace
+    if destination.exists():
+        raise PromotionContractError("cannot restore backup over an unexpected active dist")
+    os.replace(backup, destination)
+    _journal_path(root).unlink()
     try:
         runtime = json.loads((root / "dist" / "event_stack" / "runtime_manifest.json").read_text(encoding="utf-8"))
         expected_manifest = hashlib.sha256(
@@ -116,12 +149,12 @@ def recover_release_transaction(root: Path = _ROOT) -> None:
         return
     required = {
         "schema_version", "phase", "previous_registry", "candidate_registry",
-        "candidate_dist_sha256",
+        "candidate_dist_sha256", "backup_dist_path",
     }
     if set(journal) != required or journal.get("schema_version") != 1:
         raise PromotionContractError("release journal schema is invalid")
     phase = journal["phase"]
-    if phase not in {"prepared", "dist_replaced", "registry_replaced", "verified"}:
+    if phase not in {"prepared", "dist_backup", "dist_replaced", "registry_replaced", "verified"}:
         raise PromotionContractError("release journal phase is invalid")
     previous = journal["previous_registry"]
     candidate = journal["candidate_registry"]
@@ -133,18 +166,38 @@ def recover_release_transaction(root: Path = _ROOT) -> None:
         # before this orchestrator records its tree hash.  Finish that new
         # release only when the copied deployment manifest identifies it.
         if not _active_dist_matches_candidate(root, candidate):
+            if (root / "dist" / "event_stack").is_dir():
+                verify_packaged_bundle(root / "dist" / "event_stack")
+                _atomic_write(registry_path, _stable_json_bytes(previous))
+                _journal_path(root).unlink()
+                return
+            _restore_backup(root, journal, registry_path, previous)
+            return
+        phase = "dist_replaced"
+    if phase == "dist_backup" and not (root / "dist" / "event_stack").exists():
+        _restore_backup(root, journal, registry_path, previous)
+        return
+    active_dist = root / "dist" / "event_stack"
+    expected_tree = journal["candidate_dist_sha256"]
+    if expected_tree is None and not _active_dist_matches_candidate(root, candidate):
+        # The packager may have rolled back after a post-copy verification
+        # failure.  Its callback left a durable journal, but the old verified
+        # package is now active again, so retain the old registry and finish.
+        if active_dist.is_dir():
+            verify_packaged_bundle(active_dist)
             _atomic_write(registry_path, _stable_json_bytes(previous))
             _journal_path(root).unlink()
             return
-        phase = "dist_replaced"
-    active_dist = root / "dist" / "event_stack"
-    expected_tree = journal["candidate_dist_sha256"]
-    if expected_tree is not None and _tree_hash(active_dist) != expected_tree:
-        # Packaging uses its own atomic rollback.  If it restored the old dist,
-        # retain the old registry; otherwise leave evidence for manual recovery.
-        _atomic_write(registry_path, _stable_json_bytes(previous))
-        _journal_path(root).unlink()
+        _restore_backup(root, journal, registry_path, previous)
         return
+    if expected_tree is not None and _tree_hash(active_dist) != expected_tree:
+        # We cannot prove whether this is the old package or a corrupted
+        # partially replaced candidate.  Retain the journal and fail closed;
+        # deleting it would make a mixed dist/registry pair look completed.
+        if not active_dist.exists():
+            _restore_backup(root, journal, registry_path, previous)
+            return
+        raise PromotionContractError("active dist does not match the transaction journal; recovery retained")
     verify_packaged_bundle(active_dist)
     run_key = candidate.get("run_key")
     if not isinstance(run_key, str):
@@ -156,6 +209,9 @@ def recover_release_transaction(root: Path = _ROOT) -> None:
     load_incumbent_registry(registry_path, run_root=root / "models" / "event_stack" / run_key)
     final = {**journal, "phase": "verified"}
     _write_journal(root, final)
+    backup = _journal_backup(root, journal)
+    if backup is not None and backup.exists():
+        shutil.rmtree(backup)
     _journal_path(root).unlink()
 
 
@@ -178,6 +234,7 @@ def release_summary(summary_path: Path, *, root: Path = _ROOT) -> Path:
         Path(summary_path), output_root=root / "models",
         trainer=registered_filesystem_trainer,
         release_token=issue_release_transaction_token(),
+        active_release=True,
     )
     deployment = next(path for path in written if path.name == "deployment")
     candidate = incumbent_registry_payload(deployment.parent)
@@ -187,13 +244,22 @@ def release_summary(summary_path: Path, *, root: Path = _ROOT) -> Path:
         "previous_registry": incumbent,
         "candidate_registry": candidate,
         "candidate_dist_sha256": None,
+        "backup_dist_path": None,
     }
     _write_journal(root, journal)
+    def before_dist_replace(action: str, backup: Path) -> None:
+        journal["backup_dist_path"] = str(backup.resolve())
+        journal["phase"] = "dist_backup" if action == "backup" else "dist_replaced"
+        _write_journal(root, journal)
+
     package_event_stack(
         bundle_path=deployment,
         destination=root / "dist" / "event_stack",
         trusted_dist_root=root / "dist",
         release_token=issue_release_transaction_token(),
+        active_release=True,
+        before_replace=before_dist_replace,
+        retain_backup=True,
     )
     journal["candidate_dist_sha256"] = _tree_hash(root / "dist" / "event_stack")
     journal["phase"] = "dist_replaced"

@@ -860,6 +860,7 @@ def promote_summary(
     output_root: Path,
     trainer: PromotionTrainer | None = None,
     release_token: str | None = None,
+    active_release: bool = False,
 ) -> tuple[Path, ...]:
     """Promote only a strictly improved summary through an injected legal trainer.
 
@@ -903,7 +904,7 @@ def promote_summary(
         if not isinstance(key, str) or not key or Path(key).name != key:
             raise PromotionContractError("trainer bundle keys must be safe directory names")
     event_stack_root = _trusted_event_stack_root(Path(output_root) / "event_stack")
-    if Path(output_root).absolute() == (Path(__file__).resolve().parents[2] / "models").absolute():
+    if active_release or Path(output_root).absolute() == (Path(__file__).resolve().parents[2] / "models").absolute():
         consume_release_transaction_token(release_token)
     destination = event_stack_root / run_key
     _event_stack_parent(destination / "deployment", event_stack_root=event_stack_root)

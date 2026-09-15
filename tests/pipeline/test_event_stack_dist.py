@@ -540,6 +540,19 @@ def test_direct_packager_refuses_the_active_dist_without_release_token(tmp_path:
         )
 
 
+def test_custom_root_active_package_also_requires_release_token(tmp_path: Path):
+    """A caller cannot bypass the active-release guard by selecting another root."""
+
+    _, bundle = package_fixture_bundle(tmp_path)
+    with pytest.raises(PromotionContractError, match="release orchestrator"):
+        package_event_stack(
+            bundle_path=bundle,
+            destination=tmp_path / "isolated" / "dist" / "event_stack",
+            trusted_dist_root=tmp_path / "isolated" / "dist",
+            active_release=True,
+        )
+
+
 def test_runtime_manifest_cuda_boolean_cannot_claim_an_unregistered_adapter(tmp_path: Path):
     dist, _ = package_fixture_bundle(tmp_path)
     packaged = _load_module(dist / "predict_event_stack.py")

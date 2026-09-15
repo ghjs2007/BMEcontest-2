@@ -14,6 +14,7 @@ import tempfile
 import uuid
 import re
 from pathlib import Path
+from typing import Callable
 
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -234,6 +235,9 @@ def package_event_stack(
     trusted_dist_root: Path | None = None,
     cuda_adapter_path: Path | None = None,
     release_token: str | None = None,
+    active_release: bool = False,
+    before_replace: Callable[[str, Path], None] | None = None,
+    retain_backup: bool = False,
 ) -> Path:
     """Package one verified deployment bundle through a same-parent atomic swap."""
 
@@ -246,7 +250,7 @@ def package_event_stack(
     destination = _trusted_event_stack_destination(destination, trusted_root)
     # Only the top-level release transaction may touch the checked-in package.
     # Isolated test/package destinations remain useful for verification.
-    if destination == (_ROOT / "dist" / "event_stack").absolute():
+    if active_release or destination == (_ROOT / "dist" / "event_stack").absolute():
         consume_release_transaction_token(release_token)
     problems = verify_bundle_manifest(bundle_path, expected_run_key="deployment")
     if problems:
@@ -287,24 +291,30 @@ def package_event_stack(
         verify_packaged_bundle(staging)
         subprocess.run([sys.executable, "-I", str(staging / "predict_event_stack.py"), "--help"], check=True, cwd=staging.parent, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if destination.exists():
+            if before_replace is not None:
+                before_replace("backup", backup)
             os.replace(destination, backup)
             moved_previous = True
+        if before_replace is not None:
+            before_replace("install", backup)
         os.replace(staging, destination)
         promoted = True
         verify_packaged_bundle(destination)
-        if backup.exists():
+        if backup.exists() and not retain_backup:
             _safe_remove(backup)
         return destination
     except Exception:
         if promoted and (destination.exists() or _is_link_or_reparse_point(destination)):
             _safe_remove(destination)
         if moved_previous and (backup.exists() or _is_link_or_reparse_point(backup)):
+            if before_replace is not None:
+                before_replace("rollback", backup)
             os.replace(backup, destination)
         raise
     finally:
         if staging.exists() or _is_link_or_reparse_point(staging):
             _safe_remove(staging)
-        if (backup.exists() or _is_link_or_reparse_point(backup)) and destination.exists():
+        if (backup.exists() or _is_link_or_reparse_point(backup)) and destination.exists() and not retain_backup:
             _safe_remove(backup)
 
 
