@@ -7,6 +7,7 @@ import shutil
 import hashlib
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,32 @@ def test_new_process_recovers_each_later_candidate_phase(tmp_path: Path, phase: 
     assert completed.returncode == 0, completed.stderr
     assert not _journal_path(root).exists()
     assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == candidate
+
+
+def test_new_process_restores_real_verified_backup_from_dist_backup_phase(tmp_path: Path):
+    """Crash after active dist -> backup replace restores the verified old pair."""
+
+    from scripts.release_event_stack import _journal_path, _stable_json_bytes
+
+    root, registry = _release_fixture(tmp_path)
+    active = root / "dist/event_stack"
+    backup = root / "dist/.event_stack.backup-real"
+    os.replace(active, backup)
+    assert not active.exists()
+    _journal_path(root).write_bytes(_stable_json_bytes({
+        "schema_version": 1, "phase": "dist_backup",
+        "previous_registry": registry, "candidate_registry": registry,
+        "candidate_dist_sha256": None, "backup_dist_path": str(backup.resolve()),
+    }))
+
+    completed = subprocess.run(
+        [sys.executable, "-c", f"from scripts.release_event_stack import recover_release_transaction; recover_release_transaction(r'{root}')"],
+        cwd=Path.cwd(), text=True, capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert active.is_dir() and not backup.exists()
+    assert not _journal_path(root).exists()
+    assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == registry
 
 
 def test_orchestrator_equality_gate_writes_nothing(tmp_path: Path):
