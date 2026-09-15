@@ -15,7 +15,7 @@ import pytest
 
 def _release_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     root = tmp_path / "project"
-    shutil.copytree("models/event_stack/035644cf0889a5dd", root / "models/event_stack/035644cf0889a5dd")
+    shutil.copytree("models/event_stack/160afaf81debf1ee", root / "models/event_stack/160afaf81debf1ee")
     shutil.copytree("dist/event_stack", root / "dist/event_stack")
     registry = json.loads(Path("release/event_stack_incumbent.json").read_text(encoding="utf-8"))
     (root / "release").mkdir()
@@ -29,7 +29,7 @@ def _distinct_candidate(root: Path) -> dict[str, object]:
     """Create a separately attested run and copied package for interruption tests."""
     from src.pipeline.artifacts import _stable_json_bytes, incumbent_registry_payload
 
-    old_key = "035644cf0889a5dd"
+    old_key = "160afaf81debf1ee"
     new_key = "candidate-run-1"
     candidate_root = root / "models/event_stack" / new_key
     shutil.copytree(root / "models/event_stack" / old_key, candidate_root)

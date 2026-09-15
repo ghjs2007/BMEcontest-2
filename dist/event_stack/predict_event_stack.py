@@ -37,6 +37,27 @@ _DEVICE_CHOICES = ("auto", "cpu", "gpu", "cuda")
 # after its implementation and release verification are available.  A package
 # file, manifest flag, or arbitrary callable is never a registration protocol.
 _SUPPORTED_CUDA_ADAPTER_IDS = frozenset()
+_CONTEXT_V1_SUFFIXES = (
+    "pre_mean", "pre_max", "pre_std", "pre_above_fraction",
+    "candidate_mean", "candidate_max", "candidate_std", "candidate_above_fraction",
+    "post_mean", "post_max", "post_std", "post_above_fraction",
+    "candidate_minus_pre_mean", "candidate_minus_pre_max",
+    "candidate_minus_pre_std", "candidate_minus_pre_above_fraction",
+    "candidate_minus_post_mean", "candidate_minus_post_max",
+    "candidate_minus_post_std", "candidate_minus_post_above_fraction",
+    "pre_coverage", "candidate_coverage", "post_coverage",
+    "neighbor_run_count", "neighbor_run_total_duration_s", "neighbor_run_max_duration_s",
+    "preceding_run_distance_s", "following_run_distance_s",
+    "candidate_center_half_mass_fraction", "candidate_first_minus_second_mean",
+)
+_CONTEXT_V1_COLUMNS = tuple(
+    f"{scale}_{suffix}"
+    for scale in ("macro", "micro")
+    for suffix in _CONTEXT_V1_SUFFIXES
+)
+_CONTEXT_V1_SCHEMA_HASH = hashlib.sha256(
+    json.dumps(_CONTEXT_V1_COLUMNS, separators=(",", ":")).encode()
+).hexdigest()
 
 
 def _canonical_json(payload: object) -> bytes:
@@ -53,10 +74,46 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _schema_hash(schema: Mapping[str, int]) -> str:
+def _schema_hash(schema: Mapping[str, object]) -> str:
     return hashlib.sha256(
         json.dumps(dict(schema), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _schema_widths(schema: Mapping[str, object]) -> dict[str, int]:
+    """Accept repository schema-v1 maps and validate schema-v2 Context-v1."""
+
+    def widths(value: object) -> dict[str, int] | None:
+        if not isinstance(value, Mapping) or set(value) != {"macro", "micro", "verifier"}:
+            return None
+        if any(isinstance(item, bool) or not isinstance(item, int) or item < 1 for item in value.values()):
+            return None
+        return {name: int(value[name]) for name in ("macro", "micro", "verifier")}
+
+    legacy = widths(schema)
+    if legacy is not None:
+        return legacy
+    if not isinstance(schema, Mapping) or set(schema) != {"schema_version", "widths", "context"}:
+        raise ValueError("feature schema is incompatible with the event-stack runtime")
+    if schema["schema_version"] != 2:
+        raise ValueError("feature schema version is unsupported")
+    resolved_widths = widths(schema["widths"])
+    context = schema["context"]
+    if resolved_widths is None or not isinstance(context, Mapping) or set(context) != {"version", "columns", "schema_hash"}:
+        raise ValueError("feature schema v2 is malformed")
+    if context["version"] == "v1":
+        if (
+            context["columns"] != list(_CONTEXT_V1_COLUMNS)
+            or context["schema_hash"] != _CONTEXT_V1_SCHEMA_HASH
+            or resolved_widths["verifier"] != 56 + len(_CONTEXT_V1_COLUMNS)
+        ):
+            raise ValueError("feature schema Context-v1 columns, hash, or width is invalid")
+    elif context["version"] is None:
+        if context["columns"] != [] or context["schema_hash"] is not None:
+            raise ValueError("feature schema without context must have empty context metadata")
+    else:
+        raise ValueError("feature schema context version is unsupported")
+    return resolved_widths
 
 
 def _has_registered_cuda_component() -> bool:
@@ -90,7 +147,7 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return result
 
 
-def _verify_bundle(bundle_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, int]]:
+def _verify_bundle(bundle_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Validate the Task-4 bundle manifest before deserializing joblib objects."""
 
     if not bundle_path.is_dir() or bundle_path.is_symlink():
@@ -118,12 +175,8 @@ def _verify_bundle(bundle_path: Path) -> tuple[dict[str, Any], dict[str, Any], d
             raise ValueError(f"bundle manifest SHA-256 mismatch for {name}")
     policy = _read_json(bundle_path / "policy.json", "policy")
     schema_raw = _read_json(bundle_path / "feature_schema.json", "feature schema")
-    if set(schema_raw) != {"macro", "micro", "verifier"} or any(
-        isinstance(width, bool) or not isinstance(width, int) or width < 1
-        for width in schema_raw.values()
-    ):
-        raise ValueError("feature schema is incompatible with the event-stack runtime")
-    return manifest, policy, {name: int(width) for name, width in schema_raw.items()}
+    _schema_widths(schema_raw)
+    return manifest, policy, schema_raw
 
 
 def _runtime_capabilities(bundle_path: Path) -> bool:
@@ -286,6 +339,7 @@ def predict_feature_payload(bundle_path: Path, payload: Mapping[str, Any], *, de
 
     bundle_path = Path(bundle_path)
     manifest, policy, schema = _verify_bundle(bundle_path)
+    widths = _schema_widths(schema)
     _runtime_capabilities(bundle_path)
     _validate_runtime_dependencies(manifest)
     resolved_device = resolve_device(device)
@@ -342,10 +396,10 @@ def predict_feature_payload(bundle_path: Path, payload: Mapping[str, Any], *, de
                 raise ValueError("candidate start_ms/end_ms must be integers")
             if end_ms <= start_ms:
                 raise ValueError("candidate end_ms must be greater than start_ms")
-            _probability(models["macro"], candidate.get("macro"), schema["macro"], "macro")
-            _probability(models["micro"], candidate.get("micro"), schema["micro"], "micro")
-            logistic = _probability(models["verifier_logistic"], candidate.get("verifier"), schema["verifier"], "verifier")
-            lgbm = _probability(models["verifier_lgbm"], candidate.get("verifier"), schema["verifier"], "verifier")
+            _probability(models["macro"], candidate.get("macro"), widths["macro"], "macro")
+            _probability(models["micro"], candidate.get("micro"), widths["micro"], "micro")
+            logistic = _probability(models["verifier_logistic"], candidate.get("verifier"), widths["verifier"], "verifier")
+            lgbm = _probability(models["verifier_lgbm"], candidate.get("verifier"), widths["verifier"], "verifier")
             scored.append({
                 "subject_id": subject_id, "sid": sid, "start_ms": start_ms, "end_ms": end_ms,
                 "score": float(blend_weight * logistic + (1.0 - blend_weight) * lgbm),
@@ -360,12 +414,12 @@ def predict_feature_payload(bundle_path: Path, payload: Mapping[str, Any], *, de
     return cpu_output
 
 
-def build_smoke_fixture(schema: Mapping[str, int]) -> dict[str, Any]:
+def build_smoke_fixture(schema: Mapping[str, object]) -> dict[str, Any]:
     """Build a deterministic precomputed-feature fixture for package parity checks."""
 
-    normalized = {name: int(schema[name]) for name in ("macro", "micro", "verifier")}
+    normalized = _schema_widths(schema)
     return {
-        "feature_schema": normalized,
+        "feature_schema": dict(schema),
         "sessions": [{"subject_id": "fixture-subject", "sid": "fixture-session", "candidates": [{
             "start_ms": 0, "end_ms": 1000,
             "macro": [0.0] * normalized["macro"],

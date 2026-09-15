@@ -36,7 +36,7 @@
      边界窗 -1 不训练；负样本每会话 ≤3× 正窗）
   → macro 候选 ∪ 15s/7.5s ACC+GYRO micro 候选
   → 同会话稳定 NMS + subject admission（阈值/IoU/cap 只由 train OOF 选择）
-  → LogisticRegression 与受限 LightGBM 概率 blend（56 维事件复核）
+  → LogisticRegression 与受限 LightGBM 概率 blend（56 维基础复核 + Context-v1 60 维上下文 = 116 维）
   → 冻结 event policy（阈值、事件几何与 subject budget）
   → 官方评估（IoU≥0.25 一对一匹配；eligible 质量审计分母）
 ```
@@ -66,6 +66,29 @@
    joblib `1.5.3`、scikit-learn `1.9.0`、lightgbm `4.7.0`。Python 不由 requirements 安装，
    但运行环境必须为 Python `3.11.x`；推理会在任一 joblib 模型反序列化前核验 Python 主/次版本
    与上述四个包的精确版本，不匹配即拒绝，不降级为 warning 或尝试加载。
+
+### 当前发布结果（Context-v1，2026-09-15）
+
+当前 release 为 `160afaf81debf1ee`。在预注册的严格五折、四路 inner
+subject-disjoint OOF 协议下，唯一改动是给事件复核器追加确定性的 Context-v1：同一 `sid`
+内 macro/micro 概率流的前/候选/后 20 分钟统计、固定阈值 run 形态、coverage 和时序集中度。
+该模块不读标签、不跨会话、不拟合参数；60 列由 schema-v2 固定，最终复核器宽度为 116。
+
+| fold | config hash | TP/eligible/pred | F1 |
+|---|---|---:|---:|
+| 0 | `afcf9609a2f6925a` | 16/23/35 | 0.5517241379 |
+| 1 | `8b3e27bd2796d038` | 30/31/46 | 0.7792207792 |
+| 2 | `b463226db1e6073a` | 15/27/33 | 0.5000000000 |
+| 3 | `3f26fcb2172cd882` | 25/32/42 | 0.6756756757 |
+| 4 | `0199041f39a09f5d` | 28/40/41 | 0.6913580247 |
+| **aggregate** | `160afaf81debf1ee` | **114/153/197** | **0.6514285714** |
+
+PPV=`0.5786802030`、recall=`0.7450980392`、FP=`83`、短餐最终 recall=`20/39=0.5128205128`、
+candidate recall=`0.7712418301`、短餐 candidate recall=`0.5384615385`。相对前一已发布
+`035644cf0889a5dd` 的 F1=`0.5589743590`，提升 `+0.0924542125`；39 个受试者的 F1
+中位数/IQR/p10 分别为 `0.6667` / `[0.5357, 0.7273]` / `0.2667`，配对结果为 24 改善、5
+不变、10 变差。它满足技术晋级及推荐门（ΔF1≥0.005 且至少 3/5 folds 不差），但仍是反复
+开发后的 CV 证据，不能表述为独立测试集泛化保证。
 
 **对照系统（检测即排序 v2 + FD 预训练）**：多参数提案 + LGBM/TCN 深度双排序 +
 会话门控 + 形态学后处理，全局 F1 均值 ~0.27（eligible 校正）。保留作为对照与
@@ -289,7 +312,7 @@ train、meal_train 和 no_meal_train cache 同样不属于 deployment 指纹。
 声明。未来只能通过代码内显式、审计过的注册协议添加设备实现；CPU/CUDA 输出相近本身不能证明实际
 在 CUDA 上执行。
 
-### 5.10 当前严格最佳：候选控制 + Logistic/LightGBM blend（2026-09-14）
+### 5.10 历史严格最佳：候选控制 + Logistic/LightGBM blend（2026-09-14）
 
 实验 key 为 `035644cf0889a5dd`。这是一次严格五折、四路 inner subject-disjoint OOF 选择后的
 开发证据；相对上一版 `0.5432098765`，唯一注册改动是把 inner OOF admission 最低候选
@@ -445,9 +468,10 @@ Archieves/  Data/   # 历史与原始数据（保留）
   0.478632（112/153/315），但 raw union 3,413 超过 612 候选体积门，保留为历史证据。
 - **当前晋级**：candidate-control spec 固定同会话 NMS、subject admission、LR/LGBM
   blend 和事件策略只在 outer-train 的四路 subject-disjoint OOF 选择；实验 key
-  `035644cf0889a5dd` 得到 F1 0.5589743590（109/153/237，FP 128），候选 admission
-  299、raw union 3,413，最终短餐 19/39=0.487179（candidate short recall 0.564103）。F1 提升已固化并生成 5+1 bundle、
-  provenance 与 attestation，但短餐未达推荐门 0.65、F1 未达 0.65，暂不宣称默认最优。
+  `035644cf0889a5dd` 得到 F1 0.5589743590（109/153/237，FP 128）。随后预注册的
+  Context-v1 将确定性 session-local 上下文追加到 116 维 verifier，run
+  `160afaf81debf1ee` 达到 F1 0.6514285714（114/153/197，FP 83），已生成新的 5+1 bundle、
+  provenance、attestation 与 `dist/`。该数据仍是 CV development evidence，不宣称独立测试集最优。
 - **迁移学习路线**：先补齐 raw-session adapter 和短餐/餐时 hard-negative，再在同一
   15s 表示上评估 FD-I/FD-II；必须保留随机初始化、`external_weight=0` 控制，未经许可
   确认不纳入 WIMID/CAD，遵守 FD 的 CC BY-NC-ND 4.0 条款。

@@ -1,22 +1,21 @@
 # 进食事件检测发布包：event-stack
 
-状态（2026-09-14）：`event_stack/` 为实验 key `035644cf0889a5dd` 的 CPU 发布包。该版本
-来自严格 subject-disjoint nested 五折开发证据，聚合 F1=`0.5589743590`
-（TP/eligible/pred=`109/153/237`，PPV=`0.4599156118`，recall=`0.7124183007`，
-FP=`128`），最终短餐 recall=`19/39=0.4871794872`（candidate short recall=`0.5641025641`）。它优于上一版 `0.5432098765`，但短餐尚未
-达到推荐门 `0.65`，F1 也未达到项目目标 `0.65`，所以这是已固化但暂不推荐默认的开发版本，
-不是 untouched 测试集泛化承诺。
+状态（2026-09-15）：`event_stack/` 为 Context-v1 实验 key `160afaf81debf1ee` 的 CPU
+发布包。严格 subject-disjoint nested 五折开发证据为 F1=`0.6514285714`
+（TP/eligible/pred=`114/153/197`，PPV=`0.5786802030`，recall=`0.7450980392`，FP=`83`），
+短餐最终 recall=`20/39=0.5128205128`。它比前一 release `035644cf0889a5dd` 高
+`+0.0924542125` F1，满足技术与推荐晋级门；仍是开发 CV 证据，不是 untouched 测试集泛化承诺。
 
 ## 输入契约
 
 当前包只接受已生成、可审计的候选特征 JSON，不读取原始 `collect_data*.txt` 会话。每个
-候选必须携带有限值数组：macro 63 维、micro 47 维、verifier 56 维；同时必须有稳定
+候选必须携带有限值数组：macro 63 维、micro 47 维、verifier 116 维；同时必须有稳定
 `subject_id` 和全局唯一 `sid`。`sid` 只用于同会话 NMS 与事件几何，准入阈值、candidate
 cap 和 event budget 按 `subject_id` 执行。
 
 ```json
 {
-  "feature_schema": {"macro": 63, "micro": 47, "verifier": 56},
+  "feature_schema": {"schema_version": 2, "widths": {"macro": 63, "micro": 47, "verifier": 116}, "context": {"version": "v1", "columns": ["60 fixed columns"], "schema_hash": "1ee5f35cb5e97623039d95aba84ad300be0e226849d53cebb288a886a9d62f53"}},
   "schema_hash": "SHA-256 of canonical feature_schema JSON",
   "sessions": [{
     "subject_id": "stable-subject-id",
@@ -64,11 +63,11 @@ CUDA-capable component 时必须失败，不能伪报 GPU。当前 CUDA adapter 
 240s/15s macro（63 维） ∪ 15s/7.5s ACC+GYRO micro（47 维）
   → 同 sid 稳定 NMS
   → subject admission（阈值、IoU、cap 由 train OOF 冻结）
-  → LogisticRegression + 受限 LightGBM（56 维事件复核）概率 blend
+  → LogisticRegression + 受限 LightGBM（56 基础 + 60 Context-v1 = 116 维事件复核）概率 blend
   → 冻结 event policy → canonical Episode JSON
 ```
 
-当前五折 raw union 为 3,413，micro candidates 为 2,773，admission 后候选为 310。模型和
+当前五折 raw union 为 3,413，micro candidates 为 2,773，admission 后候选为 230。模型和
 追溯信息在 `event_stack/bundle/`：manifest 保存模型 SHA-256、输入 provenance、依赖版本
 和 deployment role；根项目还保留五个 outer-fold evidence、`promotion_summary.json` 和
 `promotion_attestation.json`。发布包只能由注册的 `scripts/package_event_stack.py` 从合法

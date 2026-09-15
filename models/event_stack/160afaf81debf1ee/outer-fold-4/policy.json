@@ -4,5 +4,5 @@
   "max_candidates_per_subject": 6,
   "max_events_per_group": null,
   "nms_iou": 0.3,
-  "threshold": 0.6595272837359293
+  "threshold": 0.6625833805859609
 }

@@ -33,15 +33,15 @@ def test_incumbent_registry_is_bound_to_current_release():
     from src.pipeline.artifacts import load_incumbent_registry
 
     registry = load_incumbent_registry(Path("release/event_stack_incumbent.json"))
-    assert registry["run_key"] == "035644cf0889a5dd"
-    assert registry["f1"] == pytest.approx(0.558974358974359)
+    assert registry["run_key"] == "160afaf81debf1ee"
+    assert registry["f1"] == pytest.approx(0.6514285714285715)
 
 
 def test_candidate_equal_to_incumbent_is_not_promotion_eligible():
     from src.pipeline.artifacts import validate_candidate_against_incumbent
 
     with pytest.raises(PromotionContractError, match="incumbent"):
-        validate_candidate_against_incumbent(0.558974358974359, 0.558974358974359)
+        validate_candidate_against_incumbent(0.6514285714285715, 0.6514285714285715)
 
 
 def test_incumbent_registry_rejects_tampered_diagnostic_set(tmp_path: Path):
@@ -55,7 +55,7 @@ def test_incumbent_registry_rejects_tampered_diagnostic_set(tmp_path: Path):
     candidate = tmp_path / "event_stack_incumbent.json"
     candidate.write_text(json.dumps(registry), encoding="utf-8")
     with pytest.raises(PromotionContractError, match="diagnostic"):
-        load_incumbent_registry(candidate, run_root=Path("models/event_stack/035644cf0889a5dd"))
+        load_incumbent_registry(candidate, run_root=Path("models/event_stack/160afaf81debf1ee"))
 
 
 def _promotion_policy_record(**overrides):
