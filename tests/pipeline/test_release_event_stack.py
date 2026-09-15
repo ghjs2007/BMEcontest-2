@@ -169,6 +169,30 @@ def test_new_process_restores_real_verified_backup_from_dist_backup_phase(tmp_pa
     assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == registry
 
 
+def test_real_release_callback_persists_phase_before_package_replaces(tmp_path: Path, monkeypatch):
+    """The callback wired into release_summary writes a durable phase before swaps."""
+    from scripts.package_event_stack import package_event_stack
+    from tests.pipeline.test_event_stack_dist import package_fixture_bundle
+    import scripts.release_event_stack as release_module
+
+    destination, bundle = package_fixture_bundle(tmp_path)
+    root = tmp_path / "project"
+    journal = {"schema_version": 1, "phase": "prepared", "previous_registry": {},
+               "candidate_registry": {}, "candidate_dist_sha256": None, "backup_dist_path": None}
+    callback = release_module.make_dist_journal_callback(root, journal)
+    original_replace = __import__("scripts.package_event_stack", fromlist=["x"]).os.replace
+    observed = []
+    def inspect_replace(source, target):
+        if Path(target).parent != destination.parent:
+            return original_replace(source, target)
+        persisted = json.loads(release_module._journal_path(root).read_text(encoding="utf-8"))
+        observed.append((Path(source).name, Path(target).name, persisted["phase"]))
+        return original_replace(source, target)
+    monkeypatch.setattr(__import__("scripts.package_event_stack", fromlist=["x"]).os, "replace", inspect_replace)
+    package_event_stack(bundle_path=bundle, destination=destination, trusted_dist_root=destination.parent, before_replace=callback)
+    assert [item[2] for item in observed[:2]] == ["dist_backup", "dist_replaced"]
+
+
 def test_orchestrator_equality_gate_writes_nothing(tmp_path: Path):
     """Equal F1 is rejected before any trainer/package side effect."""
 

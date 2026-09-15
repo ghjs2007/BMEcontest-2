@@ -56,6 +56,20 @@ def _fsync_file(path: Path) -> None:
         os.fsync(handle.fileno())
 
 
+def _fsync_parent(path: Path) -> None:
+    """Best-effort directory durability; Windows may not expose directory FDs."""
+    try:
+        descriptor = os.open(str(path.parent), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
 def _atomic_write(path: Path, contents: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
@@ -66,6 +80,7 @@ def _atomic_write(path: Path, contents: bytes) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         _fsync_file(path)
+        _fsync_parent(path)
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -77,6 +92,17 @@ def _journal_path(root: Path) -> Path:
 
 def _write_journal(root: Path, payload: Mapping[str, object]) -> None:
     _atomic_write(_journal_path(root), _stable_json_bytes(dict(payload)))
+
+
+def make_dist_journal_callback(root: Path, journal: dict[str, object]):
+    """Return the sole fsynced callback used before every package replacement."""
+
+    root = Path(root)
+    def before_dist_replace(action: str, backup: Path) -> None:
+        journal["backup_dist_path"] = str(backup.resolve())
+        journal["phase"] = "dist_backup" if action == "backup" else "dist_replaced"
+        _write_journal(root, journal)
+    return before_dist_replace
 
 
 def _load_journal(root: Path) -> dict[str, object] | None:
@@ -247,18 +273,13 @@ def release_summary(summary_path: Path, *, root: Path = _ROOT) -> Path:
         "backup_dist_path": None,
     }
     _write_journal(root, journal)
-    def before_dist_replace(action: str, backup: Path) -> None:
-        journal["backup_dist_path"] = str(backup.resolve())
-        journal["phase"] = "dist_backup" if action == "backup" else "dist_replaced"
-        _write_journal(root, journal)
-
     package_event_stack(
         bundle_path=deployment,
         destination=root / "dist" / "event_stack",
         trusted_dist_root=root / "dist",
         release_token=issue_release_transaction_token(),
         active_release=True,
-        before_replace=before_dist_replace,
+        before_replace=make_dist_journal_callback(root, journal),
         retain_backup=True,
     )
     journal["candidate_dist_sha256"] = _tree_hash(root / "dist" / "event_stack")
