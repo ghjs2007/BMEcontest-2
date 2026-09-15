@@ -152,25 +152,35 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
 **Interfaces:**
 - Produces extract_macro_windows(session, *, session_id, config) -> MacroWindowBatch and extract_micro_windows(session, *, session_id, config: MicroFeatureConfig) -> MicroWindowBatch.
 - Exact contracts: macro (n,63); micro (m,47); current numerical primitive remains extract_micro_features.
+- Macro truth is the behavior in `scripts/slide_features.py`, with `cache/slide/` as the promoted golden-evidence source.  Task 3 may not move or alter macro code until a legal raw session can be paired to its cache/slide record and recorded in the fixture manifest.
 
-- [ ] **Step 1: Write failing dimension/no-cross-gap tests.**
+- [ ] **Step 1: Capture real-session macro golden fixtures and write failing byte/NaN/window tests.**
+
+Before extracting any macro code, add the legal source-session identifier, raw-source fingerprint, cache/slide path, schema, ordered window-row SHA-256 and feature-matrix SHA-256 to fixture_manifest.json.  The capture command must call the existing scripts/slide_features.py production path and serialize its output with unchanged dtype/NaN representation.
 
     def test_macro_is_63d_and_never_crosses_gap():
         batch = extract_macro_windows(gapped_session, session_id="s1", config=MACRO_CONFIG)
         assert batch.features.shape[1] == 63
         assert all(w.end_ms <= 1_000 or w.start_ms >= 10_000 for w in batch.windows)
 
+    def test_slide_features_golden_session_is_exact_before_extraction(golden_raw_session):
+        old = run_slide_features_legacy(golden_raw_session)
+        assert canonical_window_rows_sha256(old.windows) == GOLDEN["macro_window_rows_sha256"]
+        assert matrix_sha256_preserving_nan_bits(old.features) == GOLDEN["macro_feature_matrix_sha256"]
+
     def test_micro_delegates_to_frozen_47d_primitive(monkeypatch):
         monkeypatch.setattr(features_micro, "extract_micro_features", lambda a, g, hz: np.zeros(47, np.float32))
         assert extract_micro_windows(session, session_id="s1", config=MicroFeatureConfig()).features.shape[1] == 47
 
-- [ ] **Step 2: Run RED.**
+- [ ] **Step 2: Run RED and stop on unavailable evidence.**
 
 Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_macro_features.py tests/parity/test_feature_producer_parity.py -q
 
+Expected: the new golden test fails before fixture registration. If the cache/slide golden record cannot be linked to legal raw source data, STOP this task, leave scripts/slide_features.py unchanged, and record the blocker in docs/repository_cleanup_audit.md; do not extract an inferred macro implementation.
+
 - [ ] **Step 3: Extract existing mathematics, then redirect cache/training callers.**
 
-Port macro math from actual current producer verbatim; do not infer it from width. Keep WindowBatch ABI and adapt only at module boundary.
+Port macro math from scripts/slide_features.py verbatim; do not infer it from width. Keep WindowBatch ABI and adapt only at module boundary. Make scripts/slide_features.py import the extracted producer only after the real-session golden test passes.
 
     def extract_micro_windows(session, *, session_id, config):
         rows, windows = [], []
@@ -187,11 +197,13 @@ Port macro math from actual current producer verbatim; do not infer it from widt
         legacy_macro, legacy_micro = load_promoted_feature_fixture()
         macro, micro = build_features_from_same_raw_fixture()
         assert_event_rows_equal(legacy_macro.windows, macro.windows)
+        assert matrix_sha256_preserving_nan_bits(macro.features) == GOLDEN["macro_feature_matrix_sha256"]
+        assert_nan_masks_equal(legacy_macro.features, macro.features)
         np.testing.assert_allclose(legacy_macro.features, macro.features, rtol=0, atol=0, equal_nan=True)
         assert_event_rows_equal(legacy_micro.windows, micro.windows)
         np.testing.assert_allclose(legacy_micro.features, micro.features, rtol=0, atol=0, equal_nan=True)
 
-If legal raw source for macro cache cannot be reproduced, stop and document the missing fixture; do not approximate.
+The macro test must compare every ordered window ID/start/end, byte-level finite values, and NaN mask before accepting the extracted module. Shape-only equality is insufficient.
 
 - [ ] **Step 5: Verify and commit.**
 
@@ -354,7 +366,9 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
         verify_distribution_manifest(staging)
         return atomic_replace_directory(staging, destination)
 
-Manifest includes run key, model/schema versions, feature schema, dependency pins, sorted model/source files and SHA-256 hashes; rejects missing/extra/symlink/hash mismatch. Execute subprocess with python -I and no repository parent in import path.
+Before staging, compute and persist `runtime_source_closure(repository_root)` by recursively parsing imports from predictor, schema, raw IO, timeline, macro/micro feature modules, Context-v1, candidates, artifacts and all direct package dependencies. Vendor every repository-local module in that closure under event_stack/; the build must fail if a local import resolves outside the closure. Manifest includes run key, model/schema versions, feature schema, dependency pins, sorted model/source files and SHA-256 hashes; rejects missing/extra/symlink/hash mismatch. Execute subprocess with python -I and no repository parent in import path.
+
+The clean-room test must create sentinel files/modules named src, cache, models and scripts in the former parent path, run from a copied package with the repository root unavailable, and assert `sys.path` contains neither repository root nor its parent. The package must therefore reject accidental imports from any of these paths.
 
 - [ ] **Step 4: Verify and commit.**
 
@@ -416,6 +430,8 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
     class UnsupportedCompetitionAdapter:
         def load(self, path: Path) -> tuple[Path, str | None]:
             raise NotImplementedError("official competition input/output adapter is not registered")
+        def dump(self, prediction: Mapping[str, object], path: Path) -> None:
+            raise NotImplementedError("official competition input/output adapter is not registered")
 
 - [ ] **Step 1: Write failing submission and adapter tests.**
 
@@ -426,6 +442,8 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
     def test_official_adapter_refuses_unknown_contract(tmp_path):
         with pytest.raises(NotImplementedError, match="not registered"):
             UnsupportedCompetitionAdapter().load(tmp_path/"input")
+        with pytest.raises(NotImplementedError, match="not registered"):
+            UnsupportedCompetitionAdapter().dump({"events": []}, tmp_path/"output")
 
 - [ ] **Step 2: Run RED.**
 
@@ -460,7 +478,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
 
 **Interfaces:**
 - train_event_stack.py delegates legal full-target promotion/train; evaluate_event_stack.py delegates strict crossfit; reproduce_release.py --run-key 160afaf81debf1ee verifies registry, bundles, attestation and summary without retraining.
-- Each deletion entry has path, imports, tests, reproduction, release, submission with all proof values false.
+- Each deletion entry has exactly path, imports, tests, reproduction, release, submission, references; the six proof booleans imports/tests/reproduction/release/submission/references must all be present, boolean and false.
 
 - [ ] **Step 1: Write failing reproduction/deletion-proof tests.**
 
@@ -471,8 +489,13 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
 
     def test_deleted_paths_have_no_consumers():
         for item in load_json(ROOT/"tests/fixtures/deletion_manifest.json")["deleted"]:
+            assert set(item) == {"path", "imports", "tests", "reproduction", "release", "submission", "references"}
+            assert all(type(item[name]) is bool and item[name] is False for name in
+                       ("imports", "tests", "reproduction", "release", "submission", "references"))
             assert not (ROOT/item["path"]).exists()
             assert rg_import_references(item["path"]) == []
+            assert rg_all_references(item["path"]) == []
+            assert current_reproduction_commands_reference(item["path"]) is False
 
 - [ ] **Step 2: Run RED.**
 
@@ -489,7 +512,7 @@ For every candidate from audit (rank_events*, old ranker/slide/FD scripts, one-o
     rg -n --glob '!tests/fixtures/deletion_manifest.json' '<filename-or-module-stem>' src scripts tests README.md docs dist release
     D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider
 
-If any import/test/reproduction/release/submission/docs command consumes it, change audit action to KEEP/REFACTOR; do not delete. Delete only all-false manifest entries. Preserve model root, registry, attestation, canonical evidence and manifest-referenced cache.
+For each candidate run distinct searches for imports, generic references, test references, README/docs reproduction commands, release/build commands and submission runtime closure. Set each of the six proof booleans only after the matching search is empty. If any check finds a consumer, change audit action to KEEP/REFACTOR; do not delete. Delete only entries whose required six booleans are present and false. Preserve model root, registry, attestation, canonical evidence and manifest-referenced cache.
 
 - [ ] **Step 5: Add ignore policy and clean rebuildable trash only.**
 
