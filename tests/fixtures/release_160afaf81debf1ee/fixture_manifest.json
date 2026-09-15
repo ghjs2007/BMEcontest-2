@@ -1,0 +1,13 @@
+{
+  "release_run_key": "160afaf81debf1ee",
+  "schema_version": 1,
+  "raw_data_included": false,
+  "fixtures": [],
+  "hashes": {
+    "spans": null,
+    "features": null,
+    "candidates": null,
+    "admission": null,
+    "events": null
+  }
+}

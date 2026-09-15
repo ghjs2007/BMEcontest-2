@@ -302,6 +302,41 @@ def load_incumbent_registry(
     return dict(payload)
 
 
+def verify_current_promoted_release(root: Path) -> tuple[str, ...]:
+    """Return problems found in the tracked, active promoted release.
+
+    This is intentionally a read-only release lock: it validates the registry,
+    its attested run, and the exact active run key without consulting training
+    data or rebuildable caches.
+    """
+    base = Path(root)
+    try:
+        registry_path = base / "release" / "event_stack_incumbent.json"
+        registry = load_incumbent_registry(registry_path)
+        run_root = base / "models" / "event_stack" / str(registry["run_key"])
+        problems = verify_promotion_attestation(run_root, expected_run_key=str(registry["run_key"]))
+        if problems:
+            return tuple(problems)
+        expected = incumbent_registry_payload(run_root)
+        if registry != expected:
+            return ("incumbent registry does not match attested release",)
+    except (PromotionContractError, OSError, ValueError) as exc:
+        return (str(exc),)
+    return ()
+
+
+def load_current_promoted_release(root: Path) -> Mapping[str, object]:
+    """Load the immutable promoted release summary after release-lock checks."""
+    base = Path(root)
+    problems = verify_current_promoted_release(base)
+    if problems:
+        raise PromotionContractError("current promoted release verification failed: " + "; ".join(problems))
+    registry = load_incumbent_registry(base / "release" / "event_stack_incumbent.json")
+    run_root = base / "models" / "event_stack" / str(registry["run_key"])
+    summary = json.loads((run_root / _PROMOTION_SUMMARY_FILENAME).read_text(encoding="utf-8"))
+    return {"run_key": registry["run_key"], "aggregate": summary}
+
+
 def validate_candidate_against_incumbent(
     candidate_f1: float, incumbent_f1: float
 ) -> None:
