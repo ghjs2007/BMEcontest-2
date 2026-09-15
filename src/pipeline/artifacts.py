@@ -36,6 +36,18 @@ _METADATA_FILENAMES = frozenset(
 _PROMOTION_ATTESTATION_VERSION = 1
 _PROMOTION_SUMMARY_FILENAME = "promotion_summary.json"
 _PROMOTION_ATTESTATION_FILENAME = "promotion_attestation.json"
+_INCUMBENT_REGISTRY_VERSION = 1
+_INCUMBENT_REGISTRY_FIELDS = frozenset(
+    (
+        "schema_version",
+        "run_key",
+        "f1",
+        "summary_sha256",
+        "attestation_sha256",
+        "diagnostic_set_sha256",
+    )
+)
+_RELEASE_TOKENS: set[str] = set()
 
 
 def _is_canonical_absolute_path(value: object) -> bool:
@@ -216,6 +228,114 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _diagnostic_set_sha256(run_root: Path) -> str:
+    """Hash the canonical complete outer-fold diagnostic evidence set."""
+
+    entries: dict[str, str] = {}
+    for fold in range(5):
+        name = f"outer-fold-{fold}"
+        path = run_root / name / "diagnostics.json"
+        if not path.is_file() or _is_link_or_reparse_point(path):
+            raise PromotionContractError(f"incumbent diagnostic evidence is missing: {name}")
+        entries[name] = _sha256(path)
+    return hashlib.sha256(_stable_json_bytes(entries)).hexdigest()
+
+
+def incumbent_registry_payload(run_root: Path) -> dict[str, object]:
+    """Derive the canonical registry payload from an already verified run root."""
+
+    root = Path(run_root)
+    problems = verify_promotion_attestation(root, expected_run_key=root.name)
+    if problems:
+        raise PromotionContractError(
+            "incumbent attestation verification failed: " + "; ".join(problems)
+        )
+    try:
+        summary = json.loads((root / _PROMOTION_SUMMARY_FILENAME).read_text(encoding="utf-8"))
+        run_key, f1 = _promotion_summary_contract(summary)
+    except (OSError, json.JSONDecodeError, PromotionContractError) as exc:
+        raise PromotionContractError("incumbent summary cannot be verified") from exc
+    return {
+        "schema_version": _INCUMBENT_REGISTRY_VERSION,
+        "run_key": run_key,
+        "f1": f1,
+        "summary_sha256": _sha256(root / _PROMOTION_SUMMARY_FILENAME),
+        "attestation_sha256": _sha256(root / _PROMOTION_ATTESTATION_FILENAME),
+        "diagnostic_set_sha256": _diagnostic_set_sha256(root),
+    }
+
+
+def load_incumbent_registry(
+    path: Path, *, run_root: Path | None = None
+) -> dict[str, object]:
+    """Load a tracked release floor only when it still matches verified evidence."""
+
+    registry_path = Path(path)
+    try:
+        payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PromotionContractError("incumbent registry cannot be read") from exc
+    if not isinstance(payload, dict) or set(payload) != _INCUMBENT_REGISTRY_FIELDS:
+        raise PromotionContractError("incumbent registry has an unsupported schema")
+    if payload.get("schema_version") != _INCUMBENT_REGISTRY_VERSION:
+        raise PromotionContractError("incumbent registry version is unsupported")
+    run_key = payload.get("run_key")
+    if not isinstance(run_key, str) or not run_key or Path(run_key).name != run_key:
+        raise PromotionContractError("incumbent registry run key is invalid")
+    try:
+        f1 = float(payload["f1"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PromotionContractError("incumbent registry F1 is invalid") from exc
+    if not math.isfinite(f1) or not 0.0 <= f1 <= 1.0:
+        raise PromotionContractError("incumbent registry F1 is invalid")
+    root = Path(run_root) if run_root is not None else (
+        registry_path.resolve().parents[1] / "models" / "event_stack" / run_key
+    )
+    expected = incumbent_registry_payload(root)
+    if payload != expected:
+        mismatches = [key for key in sorted(_INCUMBENT_REGISTRY_FIELDS) if payload.get(key) != expected.get(key)]
+        raise PromotionContractError(
+            "incumbent registry does not match attested " + ", ".join(mismatches)
+        )
+    return dict(payload)
+
+
+def validate_candidate_against_incumbent(
+    candidate_f1: float, incumbent_f1: float
+) -> None:
+    """Require a strict aggregate F1 improvement over the active release."""
+
+    try:
+        candidate = float(candidate_f1)
+        incumbent = float(incumbent_f1)
+    except (TypeError, ValueError) as exc:
+        raise PromotionContractError("candidate and incumbent F1 must be numeric") from exc
+    if not math.isfinite(candidate) or not math.isfinite(incumbent):
+        raise PromotionContractError("candidate and incumbent F1 must be finite")
+    if not candidate > incumbent:
+        raise PromotionContractError(
+            f"candidate aggregate F1 {candidate:.10f} does not exceed incumbent {incumbent:.10f}"
+        )
+
+
+def issue_release_transaction_token() -> str:
+    """Create a single-use in-process capability for the release orchestrator."""
+
+    token = uuid.uuid4().hex
+    _RELEASE_TOKENS.add(token)
+    return token
+
+
+def consume_release_transaction_token(token: object) -> None:
+    """Consume a capability exactly once, refusing direct active-release writes."""
+
+    if not isinstance(token, str) or token not in _RELEASE_TOKENS:
+        raise PromotionContractError(
+            "active release updates require a one-use release orchestrator transaction token"
+        )
+    _RELEASE_TOKENS.remove(token)
 
 
 def _git_sha() -> str | None:
@@ -739,6 +859,7 @@ def promote_summary(
     *,
     output_root: Path,
     trainer: PromotionTrainer | None = None,
+    release_token: str | None = None,
 ) -> tuple[Path, ...]:
     """Promote only a strictly improved summary through an injected legal trainer.
 
@@ -782,6 +903,8 @@ def promote_summary(
         if not isinstance(key, str) or not key or Path(key).name != key:
             raise PromotionContractError("trainer bundle keys must be safe directory names")
     event_stack_root = _trusted_event_stack_root(Path(output_root) / "event_stack")
+    if Path(output_root).absolute() == (Path(__file__).resolve().parents[2] / "models").absolute():
+        consume_release_transaction_token(release_token)
     destination = event_stack_root / run_key
     _event_stack_parent(destination / "deployment", event_stack_root=event_stack_root)
     event_stack_root.mkdir(parents=True, exist_ok=True)

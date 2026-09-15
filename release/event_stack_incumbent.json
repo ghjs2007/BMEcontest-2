@@ -1,0 +1,8 @@
+{
+  "attestation_sha256": "23b65359d8ca9dd072803de875ce8d0e78dd55025197664a8d95d83e699b2e33",
+  "diagnostic_set_sha256": "7ec45e45aba2b65f461f56d1cebdd169e65952fb9b994e46b31511454e70ac36",
+  "f1": 0.558974358974359,
+  "run_key": "035644cf0889a5dd",
+  "schema_version": 1,
+  "summary_sha256": "871a8fcd8d52661292c8fed2f0a75a75f28d307cb0cbd4ddb11e976cc1ee30bd"
+}

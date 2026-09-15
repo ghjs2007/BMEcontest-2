@@ -449,6 +449,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        if args.output_root.absolute() == (project_config.ROOT_DIR / "models").absolute():
+            raise PromotionContractError(
+                "active release promotion is only available through scripts/release_event_stack.py"
+            )
         payload = json.loads(args.summary.read_text(encoding="utf-8"))
         if not isinstance(payload, Mapping):
             raise PromotionContractError("registered summary must be a JSON object")

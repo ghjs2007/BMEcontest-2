@@ -24,7 +24,7 @@ from scripts.predict_event_stack import (
     predict_feature_payload,
     resolve_device,
 )
-from src.pipeline.artifacts import EventStackBundle, promote_summary, write_event_stack_bundle
+from src.pipeline.artifacts import EventStackBundle, PromotionContractError, promote_summary, write_event_stack_bundle
 
 
 def _fixture_fingerprint() -> dict[str, object]:
@@ -523,6 +523,20 @@ def test_packager_destination_is_exactly_anchored_to_one_trusted_dist_root(tmp_p
             bundle_path=bundle,
             destination=linked_root / "event_stack",
             trusted_dist_root=linked_root,
+        )
+
+
+def test_direct_packager_refuses_the_active_dist_without_release_token(tmp_path: Path, monkeypatch):
+    """Only the transaction orchestrator may replace the checked-in active dist."""
+
+    _, bundle = package_fixture_bundle(tmp_path)
+    active_root = tmp_path / "project"
+    monkeypatch.setattr(package_module, "_ROOT", active_root)
+    with pytest.raises(PromotionContractError, match="release orchestrator"):
+        package_event_stack(
+            bundle_path=bundle,
+            destination=active_root / "dist" / "event_stack",
+            trusted_dist_root=active_root / "dist",
         )
 
 

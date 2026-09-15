@@ -27,6 +27,37 @@ from src.pipeline.diagnostics import canonical_diagnostics_bytes
 from src.pipeline.runner import FoldResult, RunConfig, aggregate_fold_results, cache_key, expected_feature_dimensions, experiment_key, fold_result_to_dict
 
 
+def test_incumbent_registry_is_bound_to_current_release():
+    """The tracked replacement floor must be derived from attested evidence."""
+
+    from src.pipeline.artifacts import load_incumbent_registry
+
+    registry = load_incumbent_registry(Path("release/event_stack_incumbent.json"))
+    assert registry["run_key"] == "035644cf0889a5dd"
+    assert registry["f1"] == pytest.approx(0.558974358974359)
+
+
+def test_candidate_equal_to_incumbent_is_not_promotion_eligible():
+    from src.pipeline.artifacts import validate_candidate_against_incumbent
+
+    with pytest.raises(PromotionContractError, match="incumbent"):
+        validate_candidate_against_incumbent(0.558974358974359, 0.558974358974359)
+
+
+def test_incumbent_registry_rejects_tampered_diagnostic_set(tmp_path: Path):
+    """A registry never substitutes self-reported hashes for checked evidence."""
+
+    from src.pipeline.artifacts import load_incumbent_registry
+
+    source = Path("release/event_stack_incumbent.json")
+    registry = json.loads(source.read_text(encoding="utf-8"))
+    registry["diagnostic_set_sha256"] = "0" * 64
+    candidate = tmp_path / "event_stack_incumbent.json"
+    candidate.write_text(json.dumps(registry), encoding="utf-8")
+    with pytest.raises(PromotionContractError, match="diagnostic"):
+        load_incumbent_registry(candidate, run_root=Path("models/event_stack/035644cf0889a5dd"))
+
+
 def _promotion_policy_record(**overrides):
     """A frozen outer-train policy record; outer metrics are deliberately noise."""
 

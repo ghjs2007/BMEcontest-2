@@ -22,6 +22,7 @@ if str(_ROOT) not in sys.path:
 
 from src.pipeline.artifacts import (
     PROMOTION_F1_FLOOR,
+    consume_release_transaction_token,
     load_event_stack_bundle,
     normalize_feature_schema,
     verify_bundle_manifest,
@@ -232,6 +233,7 @@ def package_event_stack(
     destination: Path,
     trusted_dist_root: Path | None = None,
     cuda_adapter_path: Path | None = None,
+    release_token: str | None = None,
 ) -> Path:
     """Package one verified deployment bundle through a same-parent atomic swap."""
 
@@ -242,6 +244,10 @@ def package_event_stack(
         )
     trusted_root = Path(trusted_dist_root or (_ROOT / "dist"))
     destination = _trusted_event_stack_destination(destination, trusted_root)
+    # Only the top-level release transaction may touch the checked-in package.
+    # Isolated test/package destinations remain useful for verification.
+    if destination == (_ROOT / "dist" / "event_stack").absolute():
+        consume_release_transaction_token(release_token)
     problems = verify_bundle_manifest(bundle_path, expected_run_key="deployment")
     if problems:
         raise ValueError("deployment bundle manifest verification failed: " + "; ".join(problems))
