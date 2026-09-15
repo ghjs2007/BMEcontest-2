@@ -142,6 +142,73 @@ def test_new_process_recovers_each_later_candidate_phase(tmp_path: Path, phase: 
     assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == candidate
 
 
+def test_orchestrator_equality_gate_writes_nothing(tmp_path: Path):
+    """Equal F1 is rejected before any trainer/package side effect."""
+
+    from src.pipeline.artifacts import PromotionContractError
+    from scripts.release_event_stack import release_summary
+
+    root, registry = _release_fixture(tmp_path)
+    summary = root / "equal.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": registry["f1"]}}), encoding="utf-8")
+    before = (root / "release/event_stack_incumbent.json").read_bytes()
+    with pytest.raises(PromotionContractError, match="does not exceed incumbent"):
+        release_summary(summary, root=root)
+    assert (root / "release/event_stack_incumbent.json").read_bytes() == before
+    assert not (root / "release/.event-stack-transaction.json").exists()
+
+
+def test_orchestrator_refuses_invalid_incumbent_before_training(tmp_path: Path):
+    from src.pipeline.artifacts import PromotionContractError
+    from scripts.release_event_stack import release_summary
+
+    root, registry = _release_fixture(tmp_path)
+    bad = {**registry, "attestation_sha256": "0" * 64}
+    (root / "release/event_stack_incumbent.json").write_text(json.dumps(bad), encoding="utf-8")
+    summary = root / "candidate.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": 0.9}}), encoding="utf-8")
+    with pytest.raises(PromotionContractError, match="incumbent registry"):
+        release_summary(summary, root=root)
+
+
+def test_orchestrator_refuses_invalid_diagnostic_set_before_training(tmp_path: Path):
+    from src.pipeline.artifacts import PromotionContractError
+    from scripts.release_event_stack import release_summary
+
+    root, registry = _release_fixture(tmp_path)
+    bad = {**registry, "diagnostic_set_sha256": "0" * 64}
+    (root / "release/event_stack_incumbent.json").write_text(json.dumps(bad), encoding="utf-8")
+    summary = root / "candidate.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": 0.9}}), encoding="utf-8")
+    with pytest.raises(PromotionContractError, match="incumbent registry"):
+        release_summary(summary, root=root)
+
+
+def test_package_failure_leaves_recoverable_old_release(tmp_path: Path, monkeypatch):
+    """Failure after candidate preparation leaves a durable journal and old pair."""
+
+    import scripts.release_event_stack as release_module
+
+    root, registry = _release_fixture(tmp_path)
+    candidate = _distinct_candidate(root)
+    # _distinct_candidate models an already-built candidate package; restore old active dist.
+    shutil.rmtree(root / "dist/event_stack")
+    shutil.copytree(Path("dist/event_stack"), root / "dist/event_stack")
+    summary = root / "candidate.json"
+    summary.write_text(json.dumps({"outer_metrics": {"f1": 0.9}}), encoding="utf-8")
+    candidate_deployment = root / "models/event_stack" / str(candidate["run_key"]) / "deployment"
+    monkeypatch.setattr(release_module, "promote_summary", lambda *_args, **_kwargs: (candidate_deployment,))
+    monkeypatch.setattr(release_module, "package_event_stack", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("package failure")))
+
+    with pytest.raises(RuntimeError, match="package failure"):
+        release_module.release_summary(summary, root=root)
+    assert release_module._journal_path(root).exists()
+    assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == registry
+    release_module.recover_release_transaction(root)
+    assert not release_module._journal_path(root).exists()
+    assert json.loads((root / "release/event_stack_incumbent.json").read_text(encoding="utf-8")) == registry
+
+
 def test_recovery_after_dist_phase_finishes_a_verified_new_pair(tmp_path: Path):
     from scripts.release_event_stack import _journal_path, _stable_json_bytes, _tree_hash, recover_release_transaction
 
