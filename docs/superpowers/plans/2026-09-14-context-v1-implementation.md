@@ -1,5 +1,10 @@
 # Context-v1 Implementation Plan
 
+> **Historical execution record:** this plan was written while `035644cf0889a5dd` was the incumbent.
+> It was superseded by the promoted Context-v1 release `160afaf81debf1ee`; the retired model directory
+> was deliberately removed under the release-retention policy. References below describe that historical
+> bootstrap workflow and are not current reproduction commands.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the one-shot deterministic 60-column Context-v1 verifier block, attested per-subject diagnostics, and an incumbent-aware release gate, then run one strict five-fold experiment against F1 `0.5589743590`.
@@ -280,7 +285,7 @@ peaks and assert aggregate `max` behavior; Stage A may leave CUDA/SSL-specific f
 
 Add a permanent command that loads the verified incumbent summary and its five evidence records, replays
 each frozen outer fold through the same runner without changing any selection, and writes canonical
-per-subject diagnostics under `models/event_stack/035644cf0889a5dd/diagnostics/`. It must assert the replayed
+per-subject diagnostics under the then-incumbent model diagnostics directory. It must assert the replayed
 aggregate remains exactly TP `109`, true `153`, predictions `237`, F1 `0.558974358974359`; otherwise it
 refuses all writes. Rebuild the incumbent attestation so it binds the five diagnostic hashes. Add a test
 that a changed replay metric or input fingerprint leaves the incumbent directory untouched.
@@ -297,7 +302,7 @@ Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipel
 Expected: PASS.
 
 ```bash
-git add src/pipeline/diagnostics.py src/pipeline/runner.py src/pipeline/artifacts.py scripts/bootstrap_event_stack_diagnostics.py models/event_stack/035644cf0889a5dd tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py
+git add src/pipeline/diagnostics.py src/pipeline/runner.py src/pipeline/artifacts.py scripts/bootstrap_event_stack_diagnostics.py models/event_stack/<then-incumbent> tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py
 git commit -m "feat: attest subject-level experiment diagnostics"
 ```
 

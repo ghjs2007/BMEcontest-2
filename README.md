@@ -114,7 +114,7 @@ candidate recall=`0.7712418301`、短餐 candidate recall=`0.5384615385`。相�
 
 ## 5. 代码得分及结果说明
 
-### 5.1 当前最优（v6 干净协议——受试者互斥、零信息 CV）
+### 5.1 历史 v6 最优（干净协议——受试者互斥、零信息 CV）
 
 第二轮 peer review 指出 wbag 泄漏：评估折 k 时 bag 里的 fold m≠k 模型训练过
 折 k val 受试者的会话（受试者互斥划分本身已审计干净——每个受试者全部会话只在
@@ -187,15 +187,16 @@ v4：窗模型 5 折 bag（+0.06~0.09）——增益含泄漏成分，bag 结构
 v3/v2/v1：TCN 分融合、复核负样本、时刻先验等演进。
 
 对照系统（FD 预训练微调 + proposal 解码，eligible 校正）均值 ~0.27。
-该对照系统的逐折诊断产物已在发布清理中移除；结果作为历史基线保留，当前正式证据以
-`outputs/crossfit/summary_035644cf0889a5dd.json` 及其 5 个逐折 JSON 为准。
+该对照系统的逐折诊断产物已在发布清理中移除；结果作为历史基线保留。当前正式证据为
+`outputs/crossfit/context_v1_summary.json`（内容寻址副本为
+`outputs/crossfit/summary_160afaf81debf1ee.json`）及其 5 个逐折 JSON/diagnostics。
 
-### 5.5 正式 locked nested 基线（2026-09-08）
+### 5.5 历史 locked nested 基线（2026-09-08）
 
 `scripts/crossfit_event_stack.py` 现在执行两层受试者互斥交叉拟合：inner 窗模型只给
 未见受试者生成 OOF 候选，inner verifier 再给未见受试者候选生成 OOF 分数并选择
 单一阈值；阈值冻结后才训练最终 outer-train 模型并评估 untouched outer-val。
-因此下表是当前正式 locked 结果；`slide_verifier.py` 的 val 最优阈值仅保留为
+因此下表记录当时正式 locked 结果；`slide_verifier.py` 的 val 最优阈值仅保留为
 `diagnostic_per_fold_optimum`，不得与下表混用。
 
 | fold | config hash | inner F1 | 冻结阈值 | outer TP/eligible/pred | outer F1 | 候选 recall |
@@ -210,14 +211,14 @@ v3/v2/v1：TCN 分融合、复核负样本、时刻先验等演进。
 CPU/no-TCN baseline 聚合 sensitivity 0.582、PPV 0.324；短餐（<10min）recall
 16/39=0.410，非惯用手 recall 42/90=0.467。5 fold/4 inner splits 在 5 个受限
 CPU 进程下墙钟约 24s（各折阶段耗时合计 42.2s）；相同单折二次运行命中内容寻址
-缓存，从 13.3s 降至 3.0s。当前 locked 证据位于 `outputs/crossfit/` 并纳入版本控制；
+缓存，从 13.3s 降至 3.0s。当时的 locked 证据位于 `outputs/crossfit/` 并纳入版本控制；
 可重建的试验缓存位于 `cache/crossfit/`，按精确规则忽略。
 
 coverage-fix 配套 42 维 verifier 的 nested 消融：候选 recall 从 0.791 升至
 0.863（132/153），最终 TP 从 89 升至 103，但 pred 从 275 增至 324，PPV
 0.324→0.318，聚合 F1 0.416→0.432。按预注册规则（候选漏下降、PPV 不下降、
 F1 至少 +0.01）因 PPV 下降而**拒绝直接启用**；保留为后续 hard-negative/
-短餐专用复核实验。当前正式 locked F1 距 0.65 仍差 0.234，下一阶段必须优先
+短餐专用复核实验。当时正式 locked F1 距 0.65 仍差 0.234，下一阶段必须优先
 解决 fold2/3 的阈值迁移与餐时高分 FP，而不是继续放宽密度参数。
 
 ### 5.6 Subject-budget decoder 消融（2026-09-08）
@@ -288,13 +289,13 @@ SHA-256。打包器只接受这一完整结构，且只原子替换仓库 `dist/
 
 晋级脚本还会在写入前重新验证证据，而不是信任 summary 的自报字段：五份 `run_config`
 必须重现锁定的 experiment key；每折以当前 `FilesystemDataSource` 输入指纹和
-`(macro, verifier, micro)=(63,56,47)` 重算 cache key；outer/inner 指标、候选/短餐
+`(macro, verifier, micro)=(63,116,47)` 重算 cache key；outer/inner 指标、候选/短餐
 召回、切片、计时和 fold 清单均从五份 evidence 依 runner 的同一聚合公式复算。full-target
 训练只拼接经过校验的 outer-validation 分区：macro 原始特征为 62 列并在 time prior 后为
 63 列，micro 为 47 列。与训练 pipeline 一致，特征可含由 `SimpleImputer(median)` 处理的
 `NaN`，但拒绝 `+/-Inf` 和整列缺失（默认插补器会丢列）；标签必须是有限三态
 `-1/0/1`，其中 `-1` 在拟合前剔除。候选 verifier 特征遵循同一插补/列宽契约；最终写入
-bundle 的 63/47/56 schema 来自实际拟合 estimator 的 `n_features_in_`。任一不一致都会在
+bundle 的 63/47/116 schema（其中 verifier=56 基础列+60 Context-v1 列）来自实际拟合 estimator 的 `n_features_in_`。任一不一致都会在
 创建 `models/` 或 `dist/` 前拒绝晋级。
 
 deployment bundle 的输入状态覆盖定义 full-target 并集的五个 macro validation cache、五个
@@ -336,10 +337,10 @@ outer-validation 分区的合法并集（不是把 outer 标签回灌到选择�
 且项目目标 `F1≥0.65` 尚未达到。因此状态为“已固化的严格改进、
 暂不推荐为默认”。
 
-模型路径为 `models/event_stack/035644cf0889a5dd/`（5 个 outer-fold、deployment、
-`promotion_summary.json`、`promotion_attestation.json`），发布包为 `dist/event_stack/`。
-attestation 绑定 canonical summary、严格五折和每个 manifest 的 SHA-256；deployment manifest
-另记录 full-target provenance。输入仍是 63/47/56 维的预计算特征 JSON，不是原始会话；raw-session
+这是已被替代的历史 run；其模型目录和逐折文件已按发布保留策略移除，不能作为复现路径。
+当前模型路径为 `models/event_stack/160afaf81debf1ee/`，发布包为 `dist/event_stack/`。
+attestation 绑定当前 canonical summary、严格五折和每个 manifest 的 SHA-256；deployment manifest
+另记录 full-target provenance。当前输入为 63/47/116 维的预计算特征 JSON，不是原始会话；raw-session
 adapter 尚未完成。当前 CPU-only：`auto` 解析 CPU，强制 `gpu/cuda` 在无 CUDA adapter 时明确失败。
 
 ## 6. 结果分析与评价
@@ -385,21 +386,19 @@ adapter 尚未完成。当前 CPU-only：`auto` 解析 CPU，强制 `gpu/cuda` �
 
 ## 7. 总结与应用展望
 
-**总结**：当前严格最佳为 event-stack 候选控制/stacking 版本——240s macro 与 15s
-ACC+GYRO micro 全覆盖候选，经同会话 NMS、subject admission，再由 LogisticRegression
-与 LightGBM blend 复核并执行冻结 event policy；严格五折聚合为 **F1 0.5589743590
-（109/153/237，PPV 0.4599156118，recall 0.7124183007）**。严格修复了时间轴类评估伪影
-与 wbag 跨折受试者泄漏（0.617 作废），并以 eligible 质量审计分母和 nested OOF 保证
-选择隔离。该结果已固化并优于上一版 0.5432098765，但最终短餐 recall 0.487179（candidate
-short recall 0.564103）未达推荐门
-0.65，F1 也未达项目目标 0.65，故仍标记为开发证据而非最终泛化承诺。
+**总结**：当前严格 release 为 Context-v1 event-stack——240s macro 与 15s ACC+GYRO
+micro 全覆盖候选，经同会话 NMS、subject admission，再由 56 基础列+60 同会话确定性上下文
+列的 LogisticRegression/LightGBM blend 执行冻结 event policy；严格五折聚合为 **F1
+0.6514285714（114/153/197，PPV 0.5786802030，recall 0.7450980392，FP 83）**。它相对
+历史 baseline `035644cf0889a5dd` 提升 0.0924542125，并满足项目 F1≥0.65 目标；但仍是
+重复开发后的 nested-CV 证据，不能表述为独立测试集泛化承诺。
 
 **展望**：
 1. 复核层结构改进：缺口邻域强证据餐的接受（密度覆盖率语义已修复，需复核适配，
    见 5.3）；短餐候选召回（窗证据弱是主因）；
 2. 窗口层（fold2 AUC 0.785 最弱）：新特征源（GYRO/PPG）或长上下文窗表示；
 3. 餐时误报（PPV 底噪）：部分为未记录进食，需事件级上下文/行为模式判别；
-4. raw-session adapter：目前 dist 只接受预计算 63/47/56 维特征 JSON；补齐适配器后再
+4. raw-session adapter：目前 dist 只接受预计算 63/47/116 维特征 JSON；补齐适配器后再
    重新做无训练数据的 CPU smoke/parity 验证。FD-I/FD-II 迁移仅在该目标域基线稳定后
    启动，保留随机初始化和 external_weight=0 对照并遵守数据许可证。
 
@@ -418,11 +417,10 @@ python scripts/slide_features.py --fold {0..4} --mode no_meal_train
 python scripts/slide_features.py --fold {0..4} --mode val
 # 3. 正式 locked nested event-stack 评估（当前严格最佳；CPU-only，重复运行复用缓存）
 python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 5 \
-    --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80
-# 3a. 晋级与发布（当前注册门要求 aggregate F1 严格高于 0.5432098765）
-python scripts/promote_event_stack.py --summary outputs/crossfit/summary_035644cf0889a5dd.json
-python scripts/package_event_stack.py --bundle models/event_stack/035644cf0889a5dd/deployment \
-    --destination dist/event_stack
+    --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80 \
+    --context-features v1 --summary-alias outputs/crossfit/context_v1_summary.json
+# 3a. 唯一 release 入口：只在 aggregate F1 严格高于 registry incumbent 时原子更新 dist/
+python scripts/release_event_stack.py --summary outputs/crossfit/context_v1_summary.json
 # 3b. ACC+GYRO 微窗口候选并集消融（当前因候选体积门槛未采纳为默认）
 D:/Anaconda3/envs/bme/python.exe scripts/build_micro_features.py --fold all --split all --workers 8
 D:/Anaconda3/envs/bme/python.exe scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 0 --micro-enabled

@@ -6,7 +6,7 @@ Date: 2026-09-14.
 ## 1. Goal and success criteria
 
 The project target remains leakage-safe subject-independent event F1 `>=0.65`. The current locked
-development result is run `035644cf0889a5dd`: F1 `0.5589743590`, TP `109/153`, predictions `237`,
+historical development baseline was run `035644cf0889a5dd`: F1 `0.5589743590`, TP `109/153`, predictions `237`,
 FP `128`. Work proceeds in three separately attributable stages:
 
 1. deterministic hard-negative context features;
@@ -265,7 +265,7 @@ Before each promotion, run the focused tests, a single-fold smoke, the strict fi
 bundle/attestation/dist checks and the complete suite with bytecode and pytest cache disabled. README,
 the architecture document and `dist/README.md` must state the exact run key, metrics, feature widths,
 device behavior, limitations and reproduction command. Before the first experiment, bootstrap and test
-the incumbent registry from the verified current run `035644cf0889a5dd` and F1 `0.5589743590`. The
+the incumbent registry from the verified current release `160afaf81debf1ee` and F1 `0.6514285714`. The
 implementation's older module-level `PROMOTION_F1_FLOOR=0.5432098765` may remain only as a backward-
 compatible artifact-format minimum; it must not authorize replacing the current release.
 

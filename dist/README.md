@@ -34,6 +34,56 @@ cap 和 event budget 按 `subject_id` 执行。
 为稳定排序的 canonical JSON：
 `{"events":[{"sid":...,"start_ms":...,"end_ms":...,"score":...}],"resolved_device":"cpu"}`。
 
+`feature_schema` 必须与 `event_stack/bundle/feature_schema.json` **逐 JSON 值相等**，
+`schema_hash` 是该 schema 以 UTF-8、键排序、紧凑 JSON（`,` 与 `:` 无空格）序列化后的
+SHA-256。前端不应手写 60 个 Context-v1 列；从 bundle 中读取 schema 原样随 payload 发送。
+
+## 前端集成 CLI
+
+把整个 `event_stack/` 目录（而非单个脚本）部署到前端后端可访问的位置：其中 `bundle/` 是模型与
+策略，`requirements.txt` 是严格运行时依赖，`runtime_manifest.json` 是文件完整性清单。默认命令
+已指向同目录的 `bundle/`，不依赖仓库、训练数据或任何相对项目路径：
+
+```bash
+python event_stack/predict_event_stack.py \
+  --input-features request.json \
+  --output response.json \
+  --device auto
+```
+
+也可显式传入 `--bundle event_stack/bundle`。成功时进程退出码为 `0`、标准输出为
+`resolved_device=cpu`，并原子/规范化地写出 `response.json`；拒绝输入、损坏 bundle、版本不匹配
+或 GPU 强制请求时退出码为 `2`，错误原因写入 stderr 前缀 `event-stack inference refused:`，不产生
+可信结果。`--device auto` 与 `--device cpu` 都使用 CPU；`--device gpu` 是 `cuda` 别名，而当前包
+没有经过审计的 CUDA 组件，因此 `gpu/cuda` 必定以退出码 2 拒绝，绝不把 CPU 冒充成 GPU。
+某些 Windows 环境的 joblib 会把物理核心探测失败作为 warning 写到 stderr；这不影响退出码或
+结果。若前端要求成功请求的 stderr 为空，请在启动进程前设置 `LOKY_MAX_CPU_COUNT` 为该部署主机
+允许使用的正整数线程数，例如 PowerShell 的 `$env:LOKY_MAX_CPU_COUNT='16'`。
+
+最小成功请求的结构如下；数组中的数字必须全部有限，长度必须严格为 63、47、116：
+
+```json
+{
+  "feature_schema": "copy event_stack/bundle/feature_schema.json verbatim",
+  "schema_hash": "SHA-256 of the canonical copied schema",
+  "sessions": [{
+    "subject_id": "user-42",
+    "sid": "session-20260915-a",
+    "candidates": [{
+      "start_ms": 0,
+      "end_ms": 1000,
+      "macro": ["63 finite numbers"],
+      "micro": ["47 finite numbers"],
+      "verifier": ["116 finite numbers"]
+    }]
+  }]
+}
+```
+
+响应只有 `events` 与 `resolved_device` 两个字段。每个 event 含 `sid`、`start_ms`、`end_ms`、`score`；
+events 按 `(sid,start_ms,end_ms,score)` 稳定排序。空数组是合法的“未检出事件”响应。`subject_id`
+只影响冻结的准入/预算，不会出现在输出中。
+
 ## 运行
 
 ### 运行时 ABI（必须满足）
