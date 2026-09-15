@@ -1,0 +1,31 @@
+from pathlib import Path
+
+import numpy as np
+
+
+def _write_collect_data(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = "ACC_TIME\tPPG_TIME\tGYRO_TIME\t" + "\t".join(f"v{i}" for i in range(50)) + "\n"
+    values = ["1"] * 44 + ["1", "2", "3", "4", "5", "6"]
+    rows = ["100\t200\t100\t" + "\t".join(values), "150\t-1\t150\t" + "\t".join(values)]
+    path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
+    return path
+
+
+def test_discover_raw_session_folder(tmp_path: Path):
+    from src.pipeline.io.raw_session import RawSessionSource, discover_raw_sessions
+
+    raw = _write_collect_data(tmp_path / "S01" / "collect_data1_2_3.txt")
+    assert discover_raw_sessions(raw.parent) == (RawSessionSource(raw, "S01", None),)
+
+
+def test_canonical_reader_preserves_legacy_parser_arrays(tmp_path: Path):
+    from src.data.loader import load_session_tsv
+    from src.pipeline.io.raw_session import RawSessionSource, load_raw_session
+
+    raw = _write_collect_data(tmp_path / "collect_data1_2_3.txt")
+    legacy = load_session_tsv(raw)
+    canonical = load_raw_session(RawSessionSource(raw, "fixture", None))
+    for name in ("acc", "gyro", "ppg", "t_acc", "t_ppg", "imu_valid", "ppg_valid"):
+        np.testing.assert_array_equal(getattr(legacy, name), getattr(canonical, name))
+    assert legacy.meta["row_rate"] == canonical.meta["row_rate"]

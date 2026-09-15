@@ -15,6 +15,8 @@ import numpy as np
 from src.data import manifests
 from src.pipeline.imu_features import MicroFeatureConfig
 from src.pipeline.imu_features import extract_micro_features, gravity_rotation
+from src.pipeline.io.raw_session import SessionData
+from src.pipeline.preprocessing.timeline import valid_imu_spans, window_starts
 
 
 MICRO_EXTRACTION_VERSION = 1
@@ -204,31 +206,31 @@ def _session_rows(task) -> MicroCacheArrays:
         time_ms = np.asarray(data["t_acc"], dtype=np.int64)[valid]
         acc = np.asarray(data["acc"], dtype=np.float32)[:, valid]
         gyro = np.asarray(data["gyro"], dtype=np.float32)[:, valid]
-    positive_deltas = np.diff(time_ms)
-    positive_deltas = positive_deltas[positive_deltas > 0]
-    if not len(positive_deltas):
-        return _empty_micro_arrays()
-    sample_period_ms = float(np.median(positive_deltas))
-    sample_rate_hz = 1000.0 / sample_period_ms
-    if config.gravity_align:
-        rotation = gravity_rotation(np.median(acc, axis=1))
-        acc, gyro = rotation @ acc, rotation @ gyro
-    session_end_exclusive = int(round(time_ms[-1] + sample_period_ms))
-    starts = np.arange(
-        int(time_ms[0]),
-        session_end_exclusive - config.window_ms + 1,
-        config.stride_ms,
+    session = SessionData(
+        acc=acc, gyro=gyro, ppg=np.empty((44, len(time_ms)), dtype=np.float32),
+        t_acc=time_ms, t_ppg=np.full(len(time_ms), -1, dtype=np.int64),
+        imu_valid=np.ones(len(time_ms), dtype=bool), ppg_valid=np.zeros(len(time_ms), dtype=bool), meta={},
     )
-    expected_rows = config.coverage_min * config.window_ms * sample_rate_hz / 1000.0
     features, labels, windows = [], [], []
-    for start in starts:
-        end = int(start + config.window_ms)
-        left, right = np.searchsorted(time_ms, (start, end))
-        if right - left < expected_rows:
+    for span in valid_imu_spans(session):
+        timestamps = span.timestamps_ms
+        positive_deltas = np.diff(timestamps)
+        positive_deltas = positive_deltas[positive_deltas > 0]
+        if not len(positive_deltas):
             continue
-        features.append(extract_micro_features(acc[:, left:right], gyro[:, left:right], sample_rate_hz))
-        labels.append(label_micro_window(int(start), end, meals))
-        windows.append(json.dumps((session_id, int(start), end)))
+        sample_period_ms = float(np.median(positive_deltas))
+        sample_rate_hz = 1000.0 / sample_period_ms
+        indices = span.row_indices
+        span_acc, span_gyro = acc[:, indices], gyro[:, indices]
+        if config.gravity_align:
+            rotation = gravity_rotation(np.median(span_acc, axis=1))
+            span_acc, span_gyro = rotation @ span_acc, rotation @ span_gyro
+        for start in window_starts(span, config.window_ms, config.stride_ms, config.coverage_min):
+            end = int(start + config.window_ms)
+            left, right = np.searchsorted(timestamps, (start, end))
+            features.append(extract_micro_features(span_acc[:, left:right], span_gyro[:, left:right], sample_rate_hz))
+            labels.append(label_micro_window(int(start), end, meals))
+            windows.append(json.dumps((session_id, int(start), end)))
     if not features:
         return _empty_micro_arrays()
     return MicroCacheArrays(

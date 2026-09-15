@@ -87,6 +87,20 @@ def test_build_micro_split_uses_timestamp_coverage_and_session_rotation(tmp_path
     assert arrays.label.tolist() == [0, 0, 0]
 
 
+def test_micro_cache_never_builds_a_window_across_an_acquisition_gap(tmp_path: Path):
+    from src.pipeline.micro_cache import _session_rows
+
+    path = tmp_path / "gapped.npz"
+    left = np.arange(0, 12_500, 10, dtype=np.int64)
+    right = np.arange(30_000, 42_500, 10, dtype=np.int64)
+    time_ms = np.concatenate((left, right))
+    acc = np.vstack((np.zeros(len(time_ms)), np.zeros(len(time_ms)), np.ones(len(time_ms)))).astype(np.float32)
+    np.savez(path, acc=acc, gyro=np.zeros_like(acc), t_acc=time_ms, imu_valid=np.ones(len(time_ms), dtype=bool))
+
+    rows = _session_rows((path, "gapped", (), MicroFeatureConfig()))
+    assert rows.feat.shape == (0, 47)
+
+
 def test_build_micro_split_skips_unavailable_binary_session_and_invalidates_on_arrival(tmp_path, monkeypatch):
     from src.pipeline.micro_cache import (
         _session_rows,
