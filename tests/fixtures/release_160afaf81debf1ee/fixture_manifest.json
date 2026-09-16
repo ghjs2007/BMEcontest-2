@@ -40,5 +40,14 @@
     "candidates": {"sha256": "6d435ebb829b06b16f50e99f360cda62a516dc291b6ccb0574ce4b9ed71945a9", "source": "models/event_stack/160afaf81debf1ee/promotion_summary.json", "representation": "aggregate evidence alias; not direct candidate rows"},
     "admission": {"sha256": "2e8235c10ed1b02f67cc7c10124b85d0e85d6e9671f1d423a24d02bec79024b5", "source": "models/event_stack/160afaf81debf1ee/promotion_attestation.json", "representation": "policy/attestation evidence alias; not direct admission rows"},
     "events": {"sha256": "6d435ebb829b06b16f50e99f360cda62a516dc291b6ccb0574ce4b9ed71945a9", "source": "models/event_stack/160afaf81debf1ee/promotion_summary.json", "representation": "aggregate evidence alias; not direct decoded event rows"}
+  },
+  "inference_trace_hashes": {
+    "macro_features_62": "30df7968694d6beb4fdf25700e903cad88ae837138d180c5cfbec2647483d7a8",
+    "macro_features_63": "60cf4af91326a6cb533e4af29aa9998ab8a0f68517add1cc4345865dedfe33e3",
+    "micro_features": "f3648dfda045058421fa6ee03b74cc79cf9f58745023621ad3fe3632628f0006",
+    "context_features": "c98af331170a2201e773cbf0cf387e3aa9e0a31a424474dd0f3abd2e4a787406",
+    "macro_probabilities": "1ebdb1b8927c323fe2c16ff8559cbc7f2979d3a3ba582224299682eb0ab2d0ad",
+    "micro_probabilities": "1220dc36d22b7400d08dc890196ebbb3c7073be840bf26ac419b828f9d68ae62",
+    "verifier_scores": "6e18de23e82305333e5ec49d5dc342b2d49eb3ecb7a21e7631d22ccf9057c448"
   }
 }

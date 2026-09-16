@@ -32,6 +32,33 @@ class PredictionOptions:
     device: Literal["auto", "cpu", "gpu", "cuda"] = "auto"
 
 
+@dataclass(frozen=True)
+class InferenceTrace:
+    """Read-only, layer-by-layer evidence from the frozen raw inference graph.
+
+    Threshold comparisons in the frozen policy use ``score >= threshold``.
+    The thresholds and tie rule are retained here so a score within the
+    numerical boundary neighbourhood is auditable rather than silently
+    excluded from a parity report.
+    """
+
+    spans: tuple[tuple[str, int, int], ...]
+    macro_features_62: np.ndarray
+    macro_features_63: np.ndarray
+    micro_features: np.ndarray
+    context_features: np.ndarray
+    macro_probabilities: np.ndarray
+    micro_probabilities: np.ndarray
+    candidates: tuple[dict[str, object], ...]
+    admitted: tuple[dict[str, object], ...]
+    verifier_scores: np.ndarray
+    events: tuple[dict[str, object], ...]
+    admission_threshold: float
+    event_threshold: float
+    threshold_tie_rule: str = "score >= threshold"
+    decision_boundary_epsilon: float = 1e-12
+
+
 def _positive_probability(model: object, features: np.ndarray, width: int, name: str) -> np.ndarray:
     values = np.asarray(features)
     if values.ndim != 2 or values.shape[1] != width:
@@ -121,6 +148,11 @@ class Predictor:
         path = Path(path)
         return self.predict_sources((RawSessionSource(path, path.stem, subject_id),), options)
 
+    def trace_file(self, path: Path, *, subject_id: str | None = None) -> InferenceTrace:
+        """Expose frozen intermediate values for parity tests and release audits."""
+        path = Path(path)
+        return self._trace_sources((RawSessionSource(path, path.stem, subject_id),))
+
     def predict_folder(self, path: Path, *, subject_id: str | None = None,
                        options: PredictionOptions = PredictionOptions()) -> dict[str, object]:
         sources = tuple(replace(source, subject_id=subject_id) for source in discover_raw_sessions(Path(path)))
@@ -133,34 +165,69 @@ class Predictor:
         # A future audited GPU adapter belongs here; cpu is the registered release runtime.
         if resolved_device != self._device and self._device != "cpu":
             raise RuntimeError("Predictor device state is inconsistent")
+        trace = self._trace_sources(sources)
+        source_names = [str(source.path) for source in sources]
+        total_duration, covered_duration, gap_rows = self._source_diagnostics(sources)
+        events = [dict(event) for event in trace.events]
+        result = make_prediction_result(run_key=self._run_key, source=source_names[0] if len(source_names) == 1 else str(self._bundle_path), duration_seconds=total_duration, events=events)
+        result["diagnostics"] = {
+            "coverage": covered_duration / total_duration if total_duration else 0.0,
+            "warnings": [], "resolved_device": resolved_device,
+        }
+        if options.include_candidates:
+            admitted_keys = {(str(row["session_id"]), int(row["start_ms"]), int(row["end_ms"])) for row in trace.admitted}
+            result["candidates"] = [
+                {**row, "admitted": (str(row["session_id"]), int(row["start_ms"]), int(row["end_ms"])) in admitted_keys}
+                for row in trace.candidates
+            ]
+        if options.include_timeline:
+            result["timeline"] = {
+                "session_ids": [source.session_id for source in sources],
+                "macro_windows": len(trace.macro_features_62), "micro_windows": len(trace.micro_features),
+            }
+            result["gaps"] = gap_rows
+        validate_prediction(result)
+        return result
+
+    def _source_diagnostics(self, sources: Sequence[RawSessionSource]) -> tuple[float, float, list[dict[str, object]]]:
+        total_duration = covered_duration = 0.0
+        gap_rows: list[dict[str, object]] = []
+        for source in sources:
+            spans = valid_imu_spans(load_raw_session(source))
+            if not spans:
+                continue
+            start, end = min(span.start_ms for span in spans), max(span.end_ms for span in spans)
+            total_duration += (end - start) / 1000.0
+            covered_duration += sum((span.end_ms - span.start_ms) / 1000.0 for span in spans)
+            for left, right in zip(spans, spans[1:]):
+                gap_rows.append({"session_id": source.session_id, "start_ms": left.end_ms, "end_ms": right.start_ms})
+        return total_duration, covered_duration, gap_rows
+
+    def _trace_sources(self, sources: Sequence[RawSessionSource], *, session_loader=load_raw_session) -> InferenceTrace:
+        """Run the one canonical graph, optionally with a legacy raw loader for audit."""
+        if not sources:
+            raise ValueError("at least one raw source is required")
         macro_windows: list[EventRef] = []
         macro_rows: list[np.ndarray] = []
         micro_windows: list[EventRef] = []
         micro_rows: list[np.ndarray] = []
         bounds: dict[str, tuple[int, int]] = {}
-        source_names: list[str] = []
-        gap_rows: list[dict[str, object]] = []
-        total_duration = 0.0
-        covered_duration = 0.0
+        spans: list[tuple[str, int, int]] = []
         subject_by_sid: dict[str, str] = {}
         for source in sources:
-            session = load_raw_session(source)
+            session = session_loader(source)
             sid = source.session_id
             if sid in subject_by_sid:
                 raise ValueError("raw session identifiers must be unique")
-            spans = valid_imu_spans(session)
-            if spans:
-                bounds[sid] = (min(span.start_ms for span in spans), max(span.end_ms for span in spans))
-                total_duration += (bounds[sid][1] - bounds[sid][0]) / 1000.0
-                covered_duration += sum((span.end_ms - span.start_ms) / 1000.0 for span in spans)
-                for left, right in zip(spans, spans[1:]):
-                    gap_rows.append({"session_id": sid, "start_ms": left.end_ms, "end_ms": right.start_ms})
+            valid_spans = valid_imu_spans(session)
+            if valid_spans:
+                bounds[sid] = (min(span.start_ms for span in valid_spans), max(span.end_ms for span in valid_spans))
+                spans.extend((sid, int(span.start_ms), int(span.end_ms)) for span in valid_spans)
             subject_by_sid[sid] = source.subject_id or sid
             macro = extract_macro_windows(session, session_id=sid, config=self._macro_config)
             micro = extract_micro_windows(session, session_id=sid, config=self._micro_config)
             macro_windows.extend(macro.windows); macro_rows.append(macro.features)
             micro_windows.extend(micro.windows); micro_rows.append(micro.features)
-            source_names.append(str(source.path))
         macro_features_62 = np.concatenate(macro_rows, axis=0) if macro_rows else np.empty((0, 62), dtype=np.float32)
         macro_features = add_time_prior(macro_features_62, macro_windows)
         micro_features = np.concatenate(micro_rows, axis=0) if micro_rows else np.empty((0, 47), dtype=np.float32)
@@ -180,28 +247,29 @@ class Predictor:
             scored = weight * logistic + (1.0 - weight) * lgbm
         else:
             scored = np.empty(0, dtype=np.float64)
+            features = np.empty((0, 116), dtype=np.float64)
         admission = CandidateAdmissionConfig(float(self._bundle.policy["nms_iou"]), float(self._bundle.policy["admission_threshold"]), self._bundle.policy["max_candidates_per_subject"])
         admitted_indices = admit_candidates(candidates, scored, [subject_by_sid[c.event.sid] for c in candidates], admission)
         admitted = [candidates[index] for index in admitted_indices]
         admitted_scores = scored[list(admitted_indices)] if admitted_indices else np.empty(0, dtype=np.float64)
         final = apply_event_policy([candidate.event for candidate in admitted], admitted_scores, [subject_by_sid[candidate.event.sid] for candidate in admitted], float(self._bundle.policy["threshold"]), self._bundle.policy["max_events_per_group"])
         confidence_by_event = {(candidate.event.sid, candidate.event.start_ms, candidate.event.end_ms): float(score) for candidate, score in zip(admitted, admitted_scores)}
-        events = [{"id": index, "session_id": event.sid, "start_ms": event.start_ms, "end_ms": event.end_ms,
+        events = tuple({"id": index, "session_id": event.sid, "start_ms": event.start_ms, "end_ms": event.end_ms,
                    "duration_s": (event.end_ms - event.start_ms) / 1000.0,
                    "confidence": confidence_by_event[(event.sid, event.start_ms, event.end_ms)]}
-                  for index, event in enumerate(final)]
-        result = make_prediction_result(run_key=self._run_key, source=source_names[0] if len(source_names) == 1 else str(self._bundle_path), duration_seconds=total_duration, events=events)
-        result["diagnostics"] = {
-            "coverage": covered_duration / total_duration if total_duration else 0.0,
-            "warnings": [], "resolved_device": resolved_device,
-        }
-        if options.include_candidates:
-            result["candidates"] = [{"session_id": c.event.sid, "start_ms": c.event.start_ms, "end_ms": c.event.end_ms, "score": float(score), "admitted": index in set(admitted_indices)} for index, (c, score) in enumerate(zip(candidates, scored))]
-        if options.include_timeline:
-            result["timeline"] = {
-                "session_ids": [source.session_id for source in sources],
-                "macro_windows": len(macro_windows), "micro_windows": len(micro_windows),
-            }
-            result["gaps"] = gap_rows
-        validate_prediction(result)
-        return result
+                  for index, event in enumerate(final))
+        candidate_rows = tuple(
+            {"session_id": candidate.event.sid, "start_ms": candidate.event.start_ms,
+             "end_ms": candidate.event.end_ms, "score": float(score),
+             "has_macro": candidate.macro is not None, "has_micro": candidate.micro is not None}
+            for candidate, score in zip(candidates, scored)
+        )
+        admitted_rows = tuple(candidate_rows[index] for index in admitted_indices)
+        return InferenceTrace(
+            spans=tuple(spans), macro_features_62=macro_features_62, macro_features_63=macro_features,
+            micro_features=micro_features, context_features=features[:, 56:],
+            macro_probabilities=macro_scores, micro_probabilities=micro_scores,
+            candidates=candidate_rows, admitted=admitted_rows, verifier_scores=scored,
+            events=events, admission_threshold=float(admission.threshold),
+            event_threshold=float(self._bundle.policy["threshold"]),
+        )

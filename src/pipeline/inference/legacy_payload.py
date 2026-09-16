@@ -429,6 +429,37 @@ def build_smoke_fixture(schema: Mapping[str, object]) -> dict[str, Any]:
     }
 
 
+def canonical_trace(raw_path: Path, bundle_path: Path, *, session_id: str, subject_id: str | None = None):
+    """Trace raw inference through the canonical raw-session reader.
+
+    This compatibility entry point is deliberately trace-only: it records the
+    direct source graph for release parity and is not a second inference API.
+    """
+    from .predictor import Predictor
+    from src.pipeline.io.raw_session import RawSessionSource
+
+    predictor = Predictor.from_bundle(bundle_path)
+    return predictor._trace_sources((RawSessionSource(Path(raw_path), session_id, subject_id),))
+
+
+def legacy_trace(raw_path: Path, bundle_path: Path, *, session_id: str, subject_id: str | None = None):
+    """Trace the historical loader with the frozen canonical downstream graph.
+
+    The legacy loader remains the independent producer boundary.  Candidate,
+    verifier and decoder code are intentionally canonical; duplicating them
+    would create an unmaintainable second algorithm implementation.
+    """
+    from src.data.loader import load_session_tsv
+    from src.pipeline.io.raw_session import RawSessionSource
+    from .predictor import Predictor
+
+    predictor = Predictor.from_bundle(bundle_path)
+    return predictor._trace_sources(
+        (RawSessionSource(Path(raw_path), session_id, subject_id),),
+        session_loader=lambda source: load_session_tsv(source.path),
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", type=Path, default=Path(__file__).resolve().parent / "bundle")
