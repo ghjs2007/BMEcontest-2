@@ -44,6 +44,19 @@ def test_frozen_time_prior_adapts_exactly_to_runner_boundary():
     np.testing.assert_allclose(adapted, _with_time_prior(raw_62, windows), rtol=0, atol=0, equal_nan=True)
 
 
+def test_runner_time_prior_preserves_legacy_arbitrary_width_features():
+    from src.pipeline.event_stack import EventRef
+    from src.pipeline.runner import _with_time_prior
+
+    raw = np.arange(6, dtype=np.float32).reshape(2, 3)
+    windows = (EventRef("s1", 0, 240_000), EventRef("s1", 3_600_000, 3_840_000))
+
+    adapted = _with_time_prior(raw, windows)
+
+    assert adapted.shape == (2, 4)
+    np.testing.assert_allclose(adapted[:, :3], raw)
+
+
 def test_micro_delegates_to_frozen_47d_primitive(monkeypatch):
     import src.pipeline.features.micro as features_micro
     from src.pipeline.imu_features import MicroFeatureConfig

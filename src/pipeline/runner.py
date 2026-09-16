@@ -708,6 +708,23 @@ def _groups_for(
 
 def _with_time_prior(features: np.ndarray, windows: Sequence[EventRef]) -> np.ndarray:
     """Legacy model-boundary name retained for frozen caller compatibility."""
+    matrix = np.asarray(features)
+    if matrix.ndim != 2 or len(matrix) != len(windows):
+        raise ValueError("time-prior adapter requires aligned two-dimensional features and windows")
+
+    # The canonical primitive intentionally accepts only the release-frozen
+    # 62-D macro matrix.  Historical runner callers also pass synthetic or
+    # already-selected in-memory matrices, for which the old boundary helper
+    # appended the same prior regardless of width.
+    if matrix.shape[1] != 62:
+        from src.pipeline.event_stack import _GLOBAL_PRIOR
+
+        prior = np.asarray(
+            [_GLOBAL_PRIOR[int((window.start_ms / 3.6e6) % 24)] for window in windows],
+            dtype=np.float32,
+        ).reshape((-1, 1))
+        return np.concatenate((matrix, prior), axis=1)
+
     from src.pipeline.features.macro import add_time_prior
 
     return add_time_prior(features, windows)
