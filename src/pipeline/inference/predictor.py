@@ -119,13 +119,19 @@ class Predictor:
         )
 
     @classmethod
-    def from_bundle(cls, path: Path, *, device: str = "auto") -> "Predictor":
+    def from_bundle(cls, path: Path, *, device: str = "auto", run_key: str | None = None) -> "Predictor":
         bundle_path = Path(path)
         try:
             declared_run_key = str(json.loads((bundle_path / "manifest.json").read_text(encoding="utf-8"))["run_key"])
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ValueError("bundle manifest run key cannot be read") from exc
         bundle = load_event_stack_bundle(bundle_path, expected_role="deployment", expected_run_key=declared_run_key)
+        if run_key is not None:
+            # Standalone distributions carry the frozen release key in the
+            # package manifest; the caller passes it explicitly.
+            if not isinstance(run_key, str) or not run_key:
+                raise ValueError("explicit run key must be a non-empty string")
+            return cls(bundle, bundle_path=bundle_path, run_key=run_key, device=device)
         run_key = bundle_path.parent.name
         # Repository use can point at dist/event_stack/bundle; its release key
         # is tracked by the immutable registry, never inferred from features.
@@ -176,8 +182,16 @@ class Predictor:
         }
         if options.include_candidates:
             admitted_keys = {(str(row["session_id"]), int(row["start_ms"]), int(row["end_ms"])) for row in trace.admitted}
+            # Public rows carry exactly the published schema keys; the internal
+            # trace keeps its wider diagnostic rows (has_macro/has_micro).
             result["candidates"] = [
-                {**row, "admitted": (str(row["session_id"]), int(row["start_ms"]), int(row["end_ms"])) in admitted_keys}
+                {
+                    "session_id": str(row["session_id"]),
+                    "start_ms": int(row["start_ms"]),
+                    "end_ms": int(row["end_ms"]),
+                    "score": float(row["score"]),
+                    "admitted": (str(row["session_id"]), int(row["start_ms"]), int(row["end_ms"])) in admitted_keys,
+                }
                 for row in trace.candidates
             ]
         if options.include_timeline:

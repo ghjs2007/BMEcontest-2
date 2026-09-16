@@ -7,12 +7,18 @@ from the code under test in the release fixture manifest.
 
 import hashlib
 import json
+from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 
 from src.pipeline.event_stack import EventRef, apply_event_policy
 from src.pipeline.inference import Predictor
 from src.pipeline.inference.legacy_payload import canonical_trace, legacy_trace
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _matrix_hash(values: np.ndarray) -> str:
@@ -89,3 +95,44 @@ def test_legacy_and_direct_traces_do_not_delegate_to_predictor_orchestration(
     kwargs = {"session_id": inference_fixture.session_id, "subject_id": inference_fixture.subject_id}
     assert canonical_trace(inference_fixture.raw, deployment_bundle, **kwargs).macro_features_62.shape[1] == 62
     assert legacy_trace(inference_fixture.raw, deployment_bundle, **kwargs).macro_features_62.shape[1] == 62
+
+
+def test_final_events_match_all_four_boundaries(tmp_path, inference_fixture, inference_traces):
+    """legacy = canonical Predictor = dist/inference = dist/submission for final events."""
+    from scripts.build_inference_distribution import build_inference_distribution
+    from scripts.build_submission import build_submission
+    from src.pipeline.artifacts import load_current_promoted_release
+
+    expected = [dict(row) for row in inference_traces[2].events]
+    assert expected == [dict(row) for row in inference_traces[0].events]
+    assert expected == [dict(row) for row in inference_traces[1].events]
+
+    release = load_current_promoted_release(ROOT)
+    deployment_bundle = ROOT / "models" / "event_stack" / str(release["run_key"]) / "deployment"
+    inference_package = build_inference_distribution(
+        repository_root=ROOT, bundle_path=deployment_bundle, destination=tmp_path / "built" / "inference",
+    )
+    submission_package = build_submission(repository_root=ROOT, destination=tmp_path / "built" / "submission")
+
+    inference_output = tmp_path / "inference-prediction.json"
+    done = subprocess.run(
+        [sys.executable, "-I", "predict.py", str(inference_fixture.raw),
+         "--output", str(inference_output), "--include-candidates"],
+        cwd=inference_package, capture_output=True, text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    submission_output = tmp_path / "submission-prediction.json"
+    done = subprocess.run(
+        [sys.executable, "-I", "main.py", "--raw", str(inference_fixture.raw),
+         "--output", str(submission_output), "--include-candidates"],
+        cwd=submission_package, capture_output=True, text=True,
+    )
+    assert done.returncode == 0, done.stderr
+
+    for path in (inference_output, submission_output):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        assert document["events"] == expected
+        assert document["model"]["run_key"] == "160afaf81debf1ee"
+        for row in document["candidates"]:
+            assert set(row) == {"session_id", "start_ms", "end_ms", "score", "admitted"}
+    assert json.loads(inference_output.read_text(encoding="utf-8")) == json.loads(submission_output.read_text(encoding="utf-8"))

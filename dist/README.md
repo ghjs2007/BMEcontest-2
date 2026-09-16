@@ -11,7 +11,8 @@ dist/
 ├── visual/       团队可视化开发区。
 │                 只依赖 prediction schema 与 inference 输出（见 visual/README.md）。
 ├── submission/   竞赛最终提交包（生成物）。
-│                 由仓库构建脚本生成；不得手工改算法文件。
+│                 由 scripts/build_submission.py 生成；不得手工改算法文件。
+│                 官方 I/O 契约未定义 → 官方模式显式拒绝（见其 README）。
 ├── examples/     Safe example inputs/outputs.
 │                 example_prediction.json —— 符合 schema 的合成示例（无真实数据）。
 └── schema/       Stable interface between inference and visualization.
@@ -26,6 +27,7 @@ TP/eligible/pred = 114/153/197）。发布证据与模型在 `models/event_stack
 
 ```bash
 python scripts/build_inference_distribution.py     # 重建 dist/inference/
+python scripts/build_submission.py                 # 重建 dist/submission/
 ```
 
 ## 快速推理（inference 包）

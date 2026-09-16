@@ -23,7 +23,9 @@ def _args(argv=None):
 def main(argv=None):
     args = _args(argv)
     try:
-        predictor = Predictor.from_bundle(_ROOT / "models", device=args.device)
+        manifest = json.loads((_ROOT / "manifest.json").read_text(encoding="utf-8"))
+        predictor = Predictor.from_bundle(_ROOT / "models", device=args.device,
+                                          run_key=str(manifest["release_run_key"]))
         options = predictor.options(include_timeline=args.include_timeline, include_candidates=args.include_candidates, device=args.device)
         result = predictor.predict_folder(args.input, options=options) if args.input.is_dir() else predictor.predict_file(args.input, options=options)
         args.output.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")

@@ -80,7 +80,7 @@
     }
   },
   "hashes": {
-    "README.md": "c03c3ae3dfe33a9d56a799b117af70ff77ea27860d3851edb2a7ae67118a3192",
+    "README.md": "3b757b75a06276c411775c67967b5b9c02ffa2247a5e53fc0edecaa13e2d9687",
     "event_stack/__init__.py": "e5a04716103fe98de3e37d10d8fb849a385aa40f539ce781ec57572ddccca508",
     "event_stack/artifacts.py": "1bd2aec8110fb2ddb806dc7e6e9c337e1af691dc30815eaeb01e493a76c0c5f1",
     "event_stack/candidate_control.py": "24899866fc03054b4eccb3858842ce3b2e0a1f4e0f1b449be8f097697b6937d2",
@@ -94,6 +94,7 @@
     "event_stack/features/micro.py": "d92c32d0ea2c0580cfc566cccf45e31ede40e4bbf378db1a44007504e5c6a028",
     "event_stack/imu_features.py": "f6a3cf4e0e145cb8e105107eee77a7ae7bdd4ca4bb90457c7b91d65850fb1b4c",
     "event_stack/inference/__init__.py": "60e830b9e072c9d28956d40625251981b5ee922a33798864cefa94b96596fb65",
+    "event_stack/inference/competition_adapter.py": "30e3613a0fbc174368dcfa1bc64240be21a53f9bfa7f0b00b45d3b3367ec30aa",
     "event_stack/inference/legacy_payload.py": "518f2465d8a484ebfc0583c78951a679fe5cb9cb679b609f7c686c1e14ed3a7a",
     "event_stack/inference/predictor.py": "b356121d4ccf6a7b2002c5b3de7b77d430d70cca894acfd7e4ed8dced7a8a4bb",
     "event_stack/inference/schema.py": "4db90d39276a0071f6584fbb07b9fa5fa70e555bf7b3caf69d0b5dad0a5ce013",
@@ -102,6 +103,7 @@
     "event_stack/preprocessing/__init__.py": "6e4d105c148435fde4fad2ed3024232a1088a7dfd627ab091752d2ef43f15a6f",
     "event_stack/preprocessing/timeline.py": "76ad8c6e9d0554256f344da844438c8b42c35f2ab9f5ca64dc67998a737573a6",
     "feature_schema.json": "939ed3a65787abf68675a95704281490ab2519cfe1c5512a4118d5837b8aa34d",
+    "main.py": "bb567a04dc7494888a6c292573f705e6935cc3c24fb243d5a743496107689bed",
     "models/feature_schema.json": "939ed3a65787abf68675a95704281490ab2519cfe1c5512a4118d5837b8aa34d",
     "models/macro.joblib": "ea1c3d0edb51c61016a4064ed2a755ed1ccf7b9bddf4bcf7965c05ba8e0e1eab",
     "models/micro.joblib": "a402c1b604b63d5a8f58620ff37c7fc5f665e2a7bebe836f83822093ed94fc05",
@@ -109,7 +111,6 @@
     "models/run_config.json": "94103040e8ae85b5013752a8a27bb7d632300ca86c773576d35b20bd8a8f0617",
     "models/verifier_lgbm.joblib": "03c333fed5002f93905dcd891981e3ac7e149d6b5912e4862f9105c9d537225f",
     "models/verifier_logistic.joblib": "614af1d790757cbbf8878c2b0ffee7aca933f3831ae976c400b9be0d66a64140",
-    "predict.py": "273f7c464496919555ef21d81f73f46109a487392882d68428680b93ca0df4da",
     "requirements.txt": "8997d24ed8b11e729529156f4877e068ea0068659dec3aa88034c76a11baf56a"
   },
   "model_files": [
@@ -139,6 +140,7 @@
     "event_stack/features/micro.py",
     "event_stack/imu_features.py",
     "event_stack/inference/__init__.py",
+    "event_stack/inference/competition_adapter.py",
     "event_stack/inference/legacy_payload.py",
     "event_stack/inference/predictor.py",
     "event_stack/inference/schema.py",
