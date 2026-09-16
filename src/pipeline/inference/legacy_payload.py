@@ -23,6 +23,18 @@ from typing import Any, Mapping
 import joblib
 import numpy as np
 
+from src.pipeline.artifacts import load_event_stack_bundle
+from src.pipeline.candidate_control import CandidateAdmissionConfig, admit_candidates
+from src.pipeline.event_stack import (
+    DensityConfig, EventRef, MicroCandidateConfig, apply_event_policy,
+    density_candidates, micro_candidates, multiscale_verifier_features, union_candidates,
+)
+from src.pipeline.features.macro import MacroFeatureConfig, add_time_prior, extract_macro_windows
+from src.pipeline.features.micro import extract_micro_windows
+from src.pipeline.imu_features import MicroFeatureConfig
+from src.pipeline.io.raw_session import RawSessionSource, load_raw_session
+from src.pipeline.preprocessing.timeline import valid_imu_spans
+
 
 _MODEL_NAMES = ("macro", "micro", "verifier_logistic", "verifier_lgbm")
 _METADATA_NAMES = ("policy.json", "run_config.json", "feature_schema.json")
@@ -429,17 +441,121 @@ def build_smoke_fixture(schema: Mapping[str, object]) -> dict[str, Any]:
     }
 
 
+def _trace_runtime(bundle_path: Path):
+    """Load frozen raw-runtime state without constructing a Predictor."""
+    bundle_path = Path(bundle_path)
+    manifest = _read_json(bundle_path / "manifest.json", "bundle manifest")
+    run_key = manifest.get("run_key")
+    if not isinstance(run_key, str) or not run_key:
+        raise ValueError("bundle manifest run key cannot be read")
+    bundle = load_event_stack_bundle(bundle_path, expected_role="deployment", expected_run_key=run_key)
+    folds = bundle.run_config.get("fold_configs")
+    if not isinstance(folds, list) or not folds or not isinstance(folds[0], dict):
+        raise ValueError("bundle has no frozen fold configuration")
+    frozen = folds[0]
+    density = DensityConfig(**frozen["density"])
+    micro_candidate = MicroCandidateConfig(**frozen["micro_candidate"])
+    macro_config = MacroFeatureConfig(
+        window_ms=density.window_ms, stride_ms=density.stride_ms, coverage_min=density.coverage_min,
+    )
+    micro_config = MicroFeatureConfig(
+        window_ms=micro_candidate.window_ms, stride_ms=micro_candidate.stride_ms,
+        coverage_min=density.coverage_min, gravity_align=bool(frozen.get("micro_gravity_align")),
+    )
+    return bundle, density, micro_candidate, macro_config, micro_config
+
+
+def _trace_probability(model: object, features: np.ndarray, width: int, name: str) -> np.ndarray:
+    values = np.asarray(features)
+    if values.ndim != 2 or values.shape[1] != width:
+        raise ValueError(f"{name} model features must have width {width}")
+    if not len(values):
+        return np.empty(0, dtype=np.float64)
+    probabilities = np.asarray(model.predict_proba(values), dtype=np.float64)
+    columns = np.flatnonzero(np.asarray(model.classes_) == 1)
+    if probabilities.shape != (len(values), 2) or len(columns) != 1 or not np.isfinite(probabilities).all():
+        raise ValueError(f"{name} model returned incompatible probabilities")
+    return probabilities[:, int(columns[0])]
+
+
+def _trace_by_session(windows, scores: np.ndarray) -> dict[str, list[tuple[int, int, float]]]:
+    return {
+        sid: [(window.start_ms, window.end_ms, float(score)) for window, score in zip(windows, scores) if window.sid == sid]
+        for sid in sorted({window.sid for window in windows})
+    }
+
+
+def _compose_legacy_trace(bundle_path: Path, *, spans, bounds, macro_windows, macro_62, micro_windows,
+                          micro_features, subject_by_sid: dict[str, str]):
+    """Pre-Predictor candidate, verifier and decoder composition for parity only."""
+    from .predictor import InferenceTrace
+
+    bundle, density, micro_candidate, _, _ = _trace_runtime(bundle_path)
+    macro_62 = np.asarray(macro_62, dtype=np.float32)
+    macro_63 = add_time_prior(macro_62, macro_windows)
+    micro_features = np.asarray(micro_features, dtype=np.float32)
+    macro_scores = _trace_probability(bundle.models["macro"], macro_63, 63, "macro")
+    micro_scores = _trace_probability(bundle.models["micro"], micro_features, 47, "micro")
+    macro_by_sid = _trace_by_session(macro_windows, macro_scores)
+    micro_by_sid = _trace_by_session(micro_windows, micro_scores)
+    candidates = union_candidates(
+        density_candidates(macro_by_sid, density),
+        micro_candidates(micro_by_sid, float(bundle.run_config["micro_threshold"]), micro_candidate),
+    )
+    if candidates:
+        context = multiscale_verifier_features(
+            candidates, macro_by_sid, micro_by_sid, context_features_version="v1", session_bounds_by_sid=bounds,
+        )
+        logistic = _trace_probability(bundle.models["verifier_logistic"], context, 116, "verifier")
+        lgbm = _trace_probability(bundle.models["verifier_lgbm"], context, 116, "verifier")
+        scores = float(bundle.policy["blend_weight"]) * logistic + (1.0 - float(bundle.policy["blend_weight"])) * lgbm
+    else:
+        context = np.empty((0, 116), dtype=np.float64)
+        scores = np.empty(0, dtype=np.float64)
+    admission = CandidateAdmissionConfig(
+        float(bundle.policy["nms_iou"]), float(bundle.policy["admission_threshold"]), bundle.policy["max_candidates_per_subject"],
+    )
+    admitted_indices = admit_candidates(candidates, scores, [subject_by_sid[item.event.sid] for item in candidates], admission)
+    admitted = [candidates[index] for index in admitted_indices]
+    admitted_scores = scores[list(admitted_indices)] if admitted_indices else np.empty(0, dtype=np.float64)
+    final = apply_event_policy(
+        [item.event for item in admitted], admitted_scores, [subject_by_sid[item.event.sid] for item in admitted],
+        float(bundle.policy["threshold"]), bundle.policy["max_events_per_group"],
+    )
+    confidence = {(item.event.sid, item.event.start_ms, item.event.end_ms): float(score) for item, score in zip(admitted, admitted_scores)}
+    rows = tuple({"session_id": item.event.sid, "start_ms": item.event.start_ms, "end_ms": item.event.end_ms,
+                  "score": float(score), "has_macro": item.macro is not None, "has_micro": item.micro is not None}
+                 for item, score in zip(candidates, scores))
+    events = tuple({"id": index, "session_id": item.sid, "start_ms": item.start_ms, "end_ms": item.end_ms,
+                    "duration_s": (item.end_ms - item.start_ms) / 1000.0,
+                    "confidence": confidence[(item.sid, item.start_ms, item.end_ms)]}
+                   for index, item in enumerate(final))
+    return InferenceTrace(
+        spans=tuple(spans), macro_features_62=macro_62, macro_features_63=macro_63,
+        micro_features=micro_features, context_features=context[:, 56:], macro_probabilities=macro_scores,
+        micro_probabilities=micro_scores, candidates=rows, admitted=tuple(rows[index] for index in admitted_indices),
+        verifier_scores=scores, events=events, admission_threshold=float(admission.threshold),
+        event_threshold=float(bundle.policy["threshold"]),
+    )
+
+
 def canonical_trace(raw_path: Path, bundle_path: Path, *, session_id: str, subject_id: str | None = None):
     """Trace raw inference through the canonical raw-session reader.
 
     This compatibility entry point is deliberately trace-only: it records the
     direct source graph for release parity and is not a second inference API.
     """
-    from .predictor import Predictor
-    from src.pipeline.io.raw_session import RawSessionSource
-
-    predictor = Predictor.from_bundle(bundle_path)
-    return predictor._trace_sources((RawSessionSource(Path(raw_path), session_id, subject_id),))
+    _, _, _, macro_config, micro_config = _trace_runtime(bundle_path)
+    session = load_raw_session(RawSessionSource(Path(raw_path), session_id, subject_id))
+    spans = valid_imu_spans(session)
+    bounds = {session_id: (min(item.start_ms for item in spans), max(item.end_ms for item in spans))}
+    macro = extract_macro_windows(session, session_id=session_id, config=macro_config)
+    micro = extract_micro_windows(session, session_id=session_id, config=micro_config)
+    return _compose_legacy_trace(
+        bundle_path, spans=[(session_id, int(item.start_ms), int(item.end_ms)) for item in spans], bounds=bounds,
+        macro_windows=macro.windows, macro_62=macro.features, micro_windows=micro.windows,
+        micro_features=micro.features, subject_by_sid={session_id: subject_id or session_id},
+    )
 
 
 def legacy_trace(raw_path: Path, bundle_path: Path, *, session_id: str, subject_id: str | None = None):
@@ -450,13 +566,31 @@ def legacy_trace(raw_path: Path, bundle_path: Path, *, session_id: str, subject_
     would create an unmaintainable second algorithm implementation.
     """
     from src.data.loader import load_session_tsv
-    from src.pipeline.io.raw_session import RawSessionSource
-    from .predictor import Predictor
 
-    predictor = Predictor.from_bundle(bundle_path)
-    return predictor._trace_sources(
-        (RawSessionSource(Path(raw_path), session_id, subject_id),),
-        session_loader=lambda source: load_session_tsv(source.path),
+    # The legacy loader and slide feature producer are deliberately retained
+    # here as an audit seam; neither enters the shipping Predictor graph.
+    session = load_session_tsv(raw_path)
+    _, _, _, _, micro_config = _trace_runtime(bundle_path)
+    spans = valid_imu_spans(session)
+    bounds = {session_id: (min(item.start_ms for item in spans), max(item.end_ms for item in spans))}
+    # Legacy slide evidence is cache-backed and uses the original subject/session
+    # identifier.  Its window geometry is remapped to the public raw-file ID.
+    import sys
+    scripts = str(Path(__file__).resolve().parents[3] / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import slide_features
+    produced = slide_features._process_session((subject_id, "[]", "val"))
+    if produced is None:
+        raise ValueError("legacy slide producer has no audited session cache")
+    macro_62, _, window_rows = produced
+    macro_windows = tuple(EventRef(session_id, int(start), int(end)) for _, start, end in window_rows)
+    micro = extract_micro_windows(session, session_id=session_id, config=micro_config)
+    return _compose_legacy_trace(
+        bundle_path, spans=[(session_id, int(item.start_ms), int(item.end_ms)) for item in spans], bounds=bounds,
+        macro_windows=macro_windows, macro_62=np.asarray(macro_62, dtype=np.float32),
+        micro_windows=micro.windows, micro_features=micro.features,
+        subject_by_sid={session_id: subject_id or session_id},
     )
 
 

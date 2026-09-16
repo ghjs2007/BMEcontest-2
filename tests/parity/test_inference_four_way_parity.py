@@ -6,15 +6,24 @@ from the code under test in the release fixture manifest.
 """
 
 import hashlib
+import json
 
 import numpy as np
 
 from src.pipeline.event_stack import EventRef, apply_event_policy
+from src.pipeline.inference import Predictor
+from src.pipeline.inference.legacy_payload import canonical_trace, legacy_trace
 
 
 def _matrix_hash(values: np.ndarray) -> str:
     matrix = np.ascontiguousarray(values)
     return hashlib.sha256(matrix.dtype.str.encode() + str(matrix.shape).encode() + matrix.tobytes()).hexdigest()
+
+
+def _serialized_hash(rows: tuple[dict[str, object], ...]) -> str:
+    """Hash the public, sorted decoder records rather than their Python identities."""
+    payload = json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _assert_hashes(trace, hashes: dict[str, str]) -> None:
@@ -24,6 +33,8 @@ def _assert_hashes(trace, hashes: dict[str, str]) -> None:
         "verifier_scores",
     ):
         assert _matrix_hash(getattr(trace, name)) == hashes[name]
+    for name in ("candidates", "admitted", "events"):
+        assert _serialized_hash(getattr(trace, name)) == hashes[name]
 
 
 def test_legacy_canonical_predictor_trace_is_identical(inference_traces):
@@ -65,3 +76,16 @@ def test_trace_declares_and_decoder_honours_exact_threshold_ties(inference_trace
     threshold = 0.5
     assert apply_event_policy([event], np.array([threshold]), ["subject"], threshold) == [event]
     assert apply_event_policy([event], np.array([np.nextafter(threshold, 0.0)]), ["subject"], threshold) == []
+
+
+def test_legacy_and_direct_traces_do_not_delegate_to_predictor_orchestration(
+    monkeypatch, inference_fixture, deployment_bundle,
+):
+    """A Predictor orchestration regression cannot make its own parity anchor pass."""
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("parity anchor delegated to Predictor._trace_sources")
+
+    monkeypatch.setattr(Predictor, "_trace_sources", forbidden)
+    kwargs = {"session_id": inference_fixture.session_id, "subject_id": inference_fixture.subject_id}
+    assert canonical_trace(inference_fixture.raw, deployment_bundle, **kwargs).macro_features_62.shape[1] == 62
+    assert legacy_trace(inference_fixture.raw, deployment_bundle, **kwargs).macro_features_62.shape[1] == 62

@@ -48,6 +48,9 @@
     "context_features": "c98af331170a2201e773cbf0cf387e3aa9e0a31a424474dd0f3abd2e4a787406",
     "macro_probabilities": "1ebdb1b8927c323fe2c16ff8559cbc7f2979d3a3ba582224299682eb0ab2d0ad",
     "micro_probabilities": "1220dc36d22b7400d08dc890196ebbb3c7073be840bf26ac419b828f9d68ae62",
-    "verifier_scores": "6e18de23e82305333e5ec49d5dc342b2d49eb3ecb7a21e7631d22ccf9057c448"
+    "verifier_scores": "6e18de23e82305333e5ec49d5dc342b2d49eb3ecb7a21e7631d22ccf9057c448",
+    "candidates": "afe313a77b6395afa175c1f5b03e71095797a34c2ed63d449cb731095e6cdd86",
+    "admitted": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "events": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   }
 }
