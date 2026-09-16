@@ -10,6 +10,8 @@ FDdatasets/
 checkpoints/
 outputs/*.log
 outputs/*.txt
+outputs/tmp/
+outputs/experiments/
 /outputs/crossfit/
 /outputs/slide_cand_fold*.npz
 /outputs/slide_diag_fold*.json
@@ -17,6 +19,8 @@ outputs/*.txt
 /.pytest_cache/
 *.tmp
 *.bak
+*.staging-*/
+*.backup-*/
 .coverage
 .mypy_cache/
 .ruff_cache/

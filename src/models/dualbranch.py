@@ -78,7 +78,7 @@ class HardRouter:
 
 
 def gyro_high_band_env(gyro, fs, band=(4.0, 16.0), win_s=5.0, step_s=1.0):
-    """原始 gyro (3, N) → 4-16Hz 带通能量包络（1s 网格，与 validate_baselines env 同构）。
+    """原始 gyro (3, N) → 4-16Hz 带通能量包络（1s 网格，与历史 1s 活动包络基线同构）。
 
     必须在原始采样率上滤波（10Hz 网格会丢失 4-16Hz 信息）。"""
     import scipy.signal

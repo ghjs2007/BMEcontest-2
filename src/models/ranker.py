@@ -11,8 +11,9 @@
 - 融合：concat(IMU 特征, PPG 特征 × 掩码) → 双向 GRU → 全局池化(均值+最大)
   ⊕ 元特征（候选时长/时刻先验/会话门控概率）→ MLP → 置信度 logit
 
-训练配套（train_ranker.py）：Focal Loss（γ=2）+ 硬负样本挖掘（每轮对高置信
-误判负样本提权）+ 早停与正则化。输入来自 build_candidate_windows.py 缓存。
+训练配套：Focal Loss（γ=2）+ 硬负样本挖掘（每轮对高置信误判负样本提权）+
+早停与正则化；输入来自候选窗缓存。对照系统的训练/评估脚本已随交付清理移除
+（见 tests/fixtures/deletion_manifest.json），本模块作为算法源码保留。
 """
 import math
 
