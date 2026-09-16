@@ -57,11 +57,31 @@ def validate_prediction(value: Mapping[str, object]) -> None:
             raise ValueError(f"prediction {optional} is invalid")
     if "timeline" in value:
         timeline = value["timeline"]
-        if (not isinstance(timeline, Mapping) or set(timeline) != {"session_ids", "macro_windows", "micro_windows"}
+        required_timeline = {"session_ids", "macro_windows", "micro_windows"}
+        if (not isinstance(timeline, Mapping) or not required_timeline <= set(timeline)
+                or set(timeline) - (required_timeline | {"series"})
                 or not isinstance(timeline["session_ids"], list) or not all(isinstance(item, str) and item for item in timeline["session_ids"])
                 or len(set(timeline["session_ids"])) != len(timeline["session_ids"])
                 or any(isinstance(timeline[name], bool) or not isinstance(timeline[name], int) or timeline[name] < 0 for name in ("macro_windows", "micro_windows"))):
             raise ValueError("prediction timeline is invalid")
+        if "series" in timeline:
+            series = timeline["series"]
+            if not isinstance(series, list):
+                raise ValueError("prediction timeline series is invalid")
+            for point in series:
+                if (not isinstance(point, Mapping)
+                        or set(point) != {"session_id", "timestamp_ms", "macro_probability", "micro_probability", "valid", "gap"}
+                        or not isinstance(point["session_id"], str) or not point["session_id"]
+                        or isinstance(point["timestamp_ms"], bool) or not isinstance(point["timestamp_ms"], int)
+                        or not isinstance(point["valid"], bool) or not isinstance(point["gap"], bool)):
+                    raise ValueError("prediction timeline series is invalid")
+                for name in ("macro_probability", "micro_probability"):
+                    try:
+                        probability = float(point[name])
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError("prediction timeline series is invalid") from exc
+                    if not math.isfinite(probability) or not 0.0 <= probability <= 1.0:
+                        raise ValueError("prediction timeline series is invalid")
     if "candidates" in value:
         for candidate in value["candidates"]:
             if (not isinstance(candidate, Mapping) or set(candidate) != {"session_id", "start_ms", "end_ms", "score", "admitted"}

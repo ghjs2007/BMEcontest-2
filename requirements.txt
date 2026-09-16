@@ -5,4 +5,6 @@ scikit-learn>=1.4
 lightgbm>=4.3
 pytest>=8.0
 matplotlib>=3.8
+# 测试依赖：可视化契约校验（tests/release/test_visual_contract.py）
+jsonschema>=4.0
 # W2+ 追加: torch(2.7+cu128)、onnx、onnxruntime、fastapi、uvicorn、pyinstaller

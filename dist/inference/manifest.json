@@ -96,7 +96,7 @@
     "event_stack/inference/__init__.py": "60e830b9e072c9d28956d40625251981b5ee922a33798864cefa94b96596fb65",
     "event_stack/inference/legacy_payload.py": "518f2465d8a484ebfc0583c78951a679fe5cb9cb679b609f7c686c1e14ed3a7a",
     "event_stack/inference/predictor.py": "d05bdb65d659983677e5c84d15ac552a7856cd609770ce5006cd1602adf21600",
-    "event_stack/inference/schema.py": "e163d2a6ef1f4d35b6feaa5dab7ef63cd09862c6b04c515ecdee89af2ae846f4",
+    "event_stack/inference/schema.py": "4db90d39276a0071f6584fbb07b9fa5fa70e555bf7b3caf69d0b5dad0a5ce013",
     "event_stack/io/__init__.py": "4e5c6289b82558ac53eb08c9ed8bcad05391b40bc309f1bdccf718bfb0ed15cc",
     "event_stack/io/raw_session.py": "aad482f75d2552d4bef01ace26a6b9c7ad4be86532f26b327aefad7cca47a7a6",
     "event_stack/preprocessing/__init__.py": "6e4d105c148435fde4fad2ed3024232a1088a7dfd627ab091752d2ef43f15a6f",
