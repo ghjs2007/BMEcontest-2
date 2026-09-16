@@ -61,6 +61,6 @@ python predict.py path/to/subject-folder --output prediction.json --include-time
   （numpy 2.4.6 / joblib 1.5.3 / scikit-learn 1.9.0 / lightgbm 4.7.0），
   加载任何模型前校验，不匹配即拒绝。
 
-`dist/predict.py`、`dist/predict_legacy.py`、`dist/predict_slide.py`、
-`dist/slide_models/`、`dist/src/`、`dist/models/` 为历史滑窗/检测即排序对照
-产物，已不在发布链路上；清理状态见 `docs/repository_cleanup_audit.md`。
+历史滑窗/检测即排序对照产物（旧 predict 脚本、滑窗模型权重与只读 src 副本）
+已按交付清理移除，可从 git 历史检出；删除台账见
+`tests/fixtures/deletion_manifest.json`，审计记录见 `docs/repository_cleanup_audit.md`。

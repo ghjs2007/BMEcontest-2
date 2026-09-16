@@ -1,9 +1,26 @@
-# Repository cleanup audit — Phase 1 (read-only)
+# Repository cleanup audit — Phase 1 (read-only) + post-refactor record
 
-Audit date: 2026-09-15.  Scope is the current `main` worktree only.  This
-document deliberately makes no move, deletion, or algorithm change.  Its
-purpose is to establish the immutable pre-refactor contract and the proof
-obligations for later phases of the competition-delivery refactor.
+Audit date: 2026-09-15.  Post-refactor record added 2026-09-17 (Phase 8
+execution).  Scope is the current `main` worktree only.  The audit deliberately
+makes no move, deletion, or algorithm change; its purpose is to establish the
+immutable pre-refactor contract and the proof obligations for later phases of
+the competition-delivery refactor.
+
+> **Post-refactor status (2026-09-17).**  The canonical refactor (Tasks 1-9 of
+> `docs/superpowers/plans/2026-09-15-competition-delivery-refactor.md`) completed:
+> canonical raw preprocessing/features moved to `src/pipeline/`, the raw
+> `Predictor` API and four-way boundary parity are in place, `dist/inference`
+> and `dist/submission` are generated clean-room packages, and the audited
+> historical-experiment files were removed.  **The deletion ledger is
+> `tests/fixtures/deletion_manifest.json`**: it enumerates every removed path
+> with six consumer proofs (imports/tests/reproduction/release/submission/
+> references), enforced by `tests/release/test_repository_hygiene.py`.  Deleted
+> files remain recoverable from git history.  Kept by dependency closure (not
+> used by the promoted pipeline, but imported by the raw-62 fixture or the
+> parity tests): the historical slide producer/verifier pair, the official
+> matching module, and the ranker-eval pair it imports.  `dist/event_stack`
+> (serialized-payload runtime) stays as release evidence; all new integration
+> uses `dist/inference`.
 
 ## Immutable baseline: `CURRENT_PROMOTED_RELEASE`
 
@@ -89,10 +106,12 @@ sensor files.  The duplicated `scripts/predict_event_stack.py` and
 `dist/event_stack/predict_event_stack.py` have identical bytes today, but are
 two maintained paths and must be canonicalized before release cleanup.
 
-## Inventory and next-phase disposition
+## Inventory and disposition (post-refactor, 2026-09-17)
 
-Action is a plan, not an authorization to delete now.  `DELETE-CANDIDATE`
-means the stated import/reproduction/parity proof remains required.
+Action column records the executed Phase 8 outcome.  Removed paths are
+enumerated, with their six consumer proofs, in
+`tests/fixtures/deletion_manifest.json`; removed files remain recoverable from
+git history.
 
 | Path(s) | Current role | Promoted pipeline | Training reproduction | Inference | Action |
 |---|---|:---:|:---:|:---:|---|
@@ -100,25 +119,25 @@ means the stated import/reproduction/parity proof remains required.
 | `src/pipeline/{imu_features,micro_cache}.py` | gravity-aligned 47-D ACC+GYRO and cache ABI | yes | yes | future | KEEP |
 | `src/pipeline/{context_features,candidate_control,diagnostics,crossfit}.py` | Context-v1, admission, diagnostics, subject-safe OOF | yes | yes | future | KEEP |
 | `src/pipeline/artifacts.py` | bundle manifests, attestation, incumbent contract | yes | yes | yes | KEEP |
-| `src/data/{loader,manifests,splits}.py` | raw/session and split readers | yes | yes | future | REFACTOR into raw-inference path without behavior change |
+| `src/data/{loader,manifests,splits}.py` | raw/session and split readers | yes | yes | future | REFACTORED into raw-inference path without behavior change |
 | `src/eval/metrics.py` | official matching primitives | yes | yes | indirect | KEEP |
-| `scripts/crossfit_event_stack.py` | current registered training/evaluation CLI | yes | yes | no | KEEP; make thin `evaluate_event_stack` wrapper later |
-| `scripts/promote_event_stack.py` | legal full-target trainer | yes | yes | no | KEEP; make thin release-training wrapper later |
-| `scripts/{release_event_stack,package_event_stack}.py` | active release transaction and dist build | yes | yes | yes | KEEP; package must become `build_submission` sibling later |
-| `scripts/predict_event_stack.py` | active serialized-payload CLI; copied verbatim into dist | yes | no | yes | REFACTOR into `src/pipeline/inference`; preserve byte/event parity |
-| `dist/event_stack/` | current standalone serialized-payload runtime, models and ABI evidence | yes | no | yes | KEEP until replacement clean-room runtime passes |
+| `scripts/crossfit_event_stack.py` | current registered training/evaluation CLI | yes | yes | no | KEEP; thin `evaluate_event_stack.py` wrapper added |
+| `scripts/promote_event_stack.py` | legal full-target trainer | yes | yes | no | KEEP; thin `train_event_stack.py` wrapper added |
+| `scripts/{release_event_stack,package_event_stack}.py` | active release transaction and dist build | yes | yes | yes | KEEP; `build_submission.py` added as sibling |
+| `scripts/predict_event_stack.py` | active serialized-payload CLI; copied verbatim into dist | yes | no | yes | REFACTORED into `src/pipeline/inference`; byte/event parity covered |
+| `dist/event_stack/` | standalone serialized-payload runtime, models and ABI evidence | yes | no | yes | KEEP as release evidence; new integration uses `dist/inference` |
 | `models/event_stack/160afaf81debf1ee/` | 5 outer bundles, deployment, summary, attestation | yes | yes | yes | KEEP immutable |
 | `release/event_stack_incumbent.json` | canonical active release pointer | yes | yes | yes | KEEP immutable |
 | `cache/{sessions,splits,slide,micro15}/` | manifest-fingerprinted reproduction inputs | yes | yes | no | KEEP pending post-parity cache policy |
-| `outputs/crossfit/summary_160afaf81debf1ee.json` and registered aliases | canonical scientific evidence referenced by README/release | yes | yes | no | KEEP; move only if hash chain is rebuilt and verified |
-| `scripts/build_micro_features.py` | current micro-cache build CLI; parser has direct test coverage | yes | yes | no | KEEP; thin wrapper candidate |
-| `scripts/bootstrap_event_stack_diagnostics.py` | one-time incumbent diagnostic repair/bootstrap | no | evidence maintenance | no | REFACTOR/retire only after an immutable migration test replaces it |
-| `scripts/{slide_features,slide_verifier}.py` | historical slide pipeline; parity test imports `slide_verifier` | no | historical comparison | no | KEEP until parity test and README history are migrated/retired |
-| `scripts/{rank_events,rank_events_v2,official_iou_eval,train_ranker,tcn_slide_score,pretrain_fd,prep_fd,fd_slide_exp,loso_eval,slide_eval,train_deploy_slide}` | legacy/deep/proposal experiments named by README | no | no for current release | no | DELETE-CANDIDATE after import search, historical README rewrite and full tests |
-| `scripts/{analyze_bands,analyze_label_offset,bag_eval,calib_decode,compress_sessions,compress_sessions2,diag_decode_split,diag_miss_attribution,diag_pri_subwin,diag_proposals,eval_global_thr,summarize_v2,predict}.py` | one-off analysis, historical cache prep or legacy inference | no | possibly raw-cache provenance | no | DELETE-CANDIDATE; first prove `compress_sessions2` behavior is extracted for raw Reader |
-| `dist/{predict.py,predict_legacy.py,predict_slide.py,models/,slide_models/,src/}` | obsolete legacy distribution candidates separate from active `dist/event_stack` | no | no | unclear | HOLD; must inspect competition consumers and run clean-room tests before deletion |
-| `README.md`, `docs/三阶段重构设计.md`, `docs/数据处理说明.md` | current/historical documentation and reproduction commands | yes | yes | yes | REFACTOR after canonical commands exist; preserve a compact history table |
-| `tests/pipeline/` | release/algorithm regressions | yes | yes | yes | KEEP; reorganize only after coverage is preserved |
+| `outputs/crossfit/` canonical evidence | summary + five fold records referenced by README/release | yes | yes | no | KEEP in place (hash chain preserved) |
+| `scripts/build_micro_features.py` | current micro-cache build CLI; parser has direct test coverage | yes | yes | no | KEEP |
+| `scripts/bootstrap_event_stack_diagnostics.py` | one-time incumbent diagnostic repair/bootstrap | no | evidence maintenance | no | KEEP (its tests cover the recovery paths) |
+| `scripts/{slide_features,slide_verifier}.py` | historical slide pipeline; raw-62 macro fixture and the parity test depend on them | no | historical comparison | no | KEEP by dependency closure |
+| `scripts/{official_iou_eval,rank_events,rank_events_v2}.py` | historical matching module and the ranker-eval pair it imports | no | no | no | KEEP transitively (imported by the kept slide parity path) |
+| legacy dist slide distribution (predict entry scripts, slide model weights, read-only src/model copies) | obsolete slide-pipeline distribution | no | no | no | REMOVED (ledger) |
+| historical experiment scripts (proposal/ranker/slide/FD/one-off diagnostics) | superseded by the canonical event-stack pipeline | no | no | no | REMOVED (ledger); source of truth is git history |
+| `README.md`, `docs/三阶段重构设计.md`, `docs/数据处理说明.md` | documentation and reproduction commands | yes | yes | yes | REWRITTEN to canonical commands + compact history table |
+| `tests/pipeline/` | release/algorithm regressions | yes | yes | yes | KEEP; reorganized under `tests/{unit,integration,parity,release}` |
 
 ## Required parity boundaries for later phases
 
