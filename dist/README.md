@@ -7,7 +7,7 @@
 dist/
 ├── inference/      # canonical 独立推理包（生成物）：原始 collect_data*.txt → 预测 JSON
 ├── visual/         # 团队可视化开发区（只依赖 prediction schema 与 inference 输出）
-├── submission/     # 竞赛最终提交包（生成物）：raw 模式 + 官方 adapter 边界
+├── submission/     # 竞赛最终提交包（生成物）：推理接口 + 完整模型证据链 + 复现代码 + 可视化
 ├── examples/       # 合成安全示例 example_prediction.json（符合 schema，无真实数据）
 ├── schema/         # 稳定契约 prediction.schema.json（v1.0）
 └── event_stack/    # 旧 serialized-payload 运行时（发布证据，保留，勿手改）

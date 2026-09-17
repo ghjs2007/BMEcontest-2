@@ -211,9 +211,19 @@ BMEcontest-2/
 
 ## 8. 竞赛提交
 
-`dist/submission/` 由 `scripts/build_submission.py` 确定性地从 canonical 源生成：
-`main.py`（raw 模式 + 官方 adapter 边界）、vendored `event_stack/`、`models/`、
-`requirements.txt`、`manifest.json`（逐文件 SHA-256 与 source/model 闭包）。验证：
+`dist/submission/` 是竞赛最终交付物，由 `scripts/build_submission.py` 确定性地从
+仓库唯一真源生成，包含：
+
+- **推理接口**：`main.py`（raw 模式 + 官方 adapter 边界）与 vendored `event_stack/` 运行时；
+- **完整模型资产**：`models/event_stack/<run_key>/`（deployment bundle + 五个
+  outer-fold evidence bundle + promotion summary 与 attestation）；
+- **复现代码**：`src/`（canonical 算法源码）、`scripts/`（训练/评估/发布/构建全链）
+  与 `tests/`（文档不进入提交包，随仓库维护）；
+- **可视化**：`visual/`（dist/visual 工作区原样打包）+ `schema/`、`examples/`
+  （预测契约与安全示例）；
+- `manifest.json` 逐文件 SHA-256 与 source/model 闭包、精确依赖 `requirements.txt`。
+
+验证：
 
 ```bash
 cd dist/submission
@@ -222,7 +232,8 @@ python main.py --official-input IN --output OUT                 # 退出码 2：
 ```
 
 **已知约束**：官方机器 I/O 规范未在已审计材料中定义，官方模式在注册具体 adapter
-前显式拒绝，绝不猜测线格式（`src/pipeline/inference/competition_adapter.py`）。
+前显式拒绝，绝不猜测线格式（`src/pipeline/inference/competition_adapter.py`）；
+可用接口（raw CLI / Predictor API / 预测 schema）见包内 README。
 
 ## 9. 可视化契约
 

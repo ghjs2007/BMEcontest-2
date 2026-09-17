@@ -1,9 +1,8 @@
-"""Competition submission entry point for the frozen event-stack release.
+"""竞赛提交入口：冻结 event-stack 发布的完整推理接口。
 
-Raw mode is fully supported and reproduces the canonical Predictor document.
-Official competition mode is isolated behind a registered adapter; until the
-official input/output contract is registered, this entry point refuses
-(exit code 2) rather than guessing the wire format.
+raw 模式完整可用，输出与 canonical Predictor 文档逐值一致。官方竞赛模式隔离在
+注册 adapter 之后；在官方输入/输出契约注册之前，本入口会显式拒绝（退出码 2），
+绝不猜测线格式。
 """
 from __future__ import annotations
 import argparse
@@ -22,10 +21,10 @@ from event_stack.inference.competition_adapter import registered_adapter
 def _args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--raw", type=Path, help="collect_data*.txt file or folder (canonical raw mode)")
-    mode.add_argument("--official-input", type=Path, help="official competition input (requires a registered adapter)")
-    parser.add_argument("--output", type=Path, required=True, help="destination JSON path")
-    parser.add_argument("--adapter", default="official", help="registered adapter name for official mode")
+    mode.add_argument("--raw", type=Path, help="collect_data*.txt 文件或目录（canonical raw 模式）")
+    mode.add_argument("--official-input", type=Path, help="官方竞赛输入（需要已注册 adapter）")
+    parser.add_argument("--output", type=Path, required=True, help="输出 JSON 路径")
+    parser.add_argument("--adapter", default="official", help="官方模式的 adapter 注册名")
     parser.add_argument("--include-timeline", action="store_true")
     parser.add_argument("--include-candidates", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "gpu", "cuda"), default="auto")
@@ -43,8 +42,11 @@ def main(argv=None):
     args = _args(argv)
     try:
         manifest = json.loads((_ROOT / "manifest.json").read_text(encoding="utf-8"))
-        predictor = Predictor.from_bundle(_ROOT / "models", device=args.device,
-                                          run_key=str(manifest["release_run_key"]))
+        run_key = str(manifest["release_run_key"])
+        predictor = Predictor.from_bundle(
+            _ROOT / "models" / "event_stack" / run_key / "deployment",
+            device=args.device, run_key=run_key,
+        )
         options = predictor.options(include_timeline=args.include_timeline,
                                     include_candidates=args.include_candidates,
                                     device=args.device)
