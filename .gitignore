@@ -1,13 +1,15 @@
-Archieves/
-Data/
+# 数据集与缓存目录只忽略仓库根下的实体；不做无锚定匹配，
+# 否则 Windows 大小写不敏感会误伤 src/data、dist/submission/src/data 等。
+/Archieves/
+/Data/
 *.7z
 *.pyc
 __pycache__/
-cache/
+/cache/
 /cache/crossfit/
 /models/
-FDdatasets/
-checkpoints/
+/FDdatasets/
+/checkpoints/
 outputs/*.log
 outputs/*.txt
 outputs/tmp/
