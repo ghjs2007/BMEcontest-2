@@ -4,6 +4,19 @@
 生成。请勿手工修改 `event_stack/`、`models/`、`main.py` 或 `manifest.json`；
 需要变更时重建整个包。
 
+## 包结构
+
+```text
+dist/submission/
+├── main.py               # 竞赛入口：--raw 模式 + 官方 adapter 边界
+├── event_stack/          # canonical 源码 vendored 副本（含 competition_adapter）
+├── models/               # 冻结 deployment bundle（macro/micro/verifier 模型 + policy）
+├── manifest.json         # 逐文件 SHA-256 与 source/model 闭包
+├── feature_schema.json   # schema v2（macro 63 / micro 47 / verifier 116）
+├── requirements.txt      # 精确依赖 pin（来自 deployment manifest）
+└── README.md
+```
+
 ## 从零验证
 
 ```bash

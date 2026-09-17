@@ -157,20 +157,56 @@ python scripts/build_submission.py
 ## 7. 仓库结构
 
 ```text
-src/pipeline/      算法唯一真源：io/ preprocessing/ features/ inference/ + event_stack/runner/
-                   candidate_control/context_features/artifacts（发布契约与 attestation）
-src/data/          raw/会话与 split 读取；src/eval/ 官方匹配评估
-scripts/           入口：evaluate_event_stack / train_event_stack / reproduce_release /
-                   crossfit_event_stack / promote_event_stack / release_event_stack /
-                   build_inference_distribution / build_submission / package_event_stack 等
-tests/             unit/ integration/ parity/（四路 boundary parity）release/（clean-room、
-                   schema、hygiene 门禁）pipeline/
-models/            promoted 5+1 bundle（不可变）；release/ 收录 incumbent 指针
-outputs/           正式 crossfit 证据（summary + 逐折）
-dist/              发布工作区：inference/ visual/ submission/ examples/ schema/（+ 旧
-                   event_stack 运行时，见其 README）
-docs/              审计、重构任务书、实施计划与数据处理说明
-cache/  FDdatasets/  ReferenceDocs/  Archieves/  Data/（数据与缓存，见 .gitignore）
+BMEcontest-2/
+├── src/                                  # 算法唯一真源（canonical implementation）
+│   ├── pipeline/
+│   │   ├── io/                           # 原始会话发现、时间线与缺口切分
+│   │   ├── preprocessing/                # 有效段与窗口网格原语
+│   │   ├── features/                     # macro（62→63）与 micro（47）特征生产器
+│   │   ├── inference/                    # Predictor API、预测 schema、竞赛 adapter 边界
+│   │   ├── event_stack.py                # 候选/复核特征/解码（canonical 事件图）
+│   │   ├── runner.py                     # 数据集组装与训练编排
+│   │   ├── candidate_control.py          # 同会话 NMS 与 subject admission
+│   │   ├── context_features.py           # Context-v1（60 列确定性上下文）
+│   │   ├── artifacts.py                  # bundle/manifest/attestation/incumbent 契约
+│   │   ├── crossfit.py                   # subject-disjoint OOF 协议
+│   │   ├── imu_features.py               # 47 维 ACC+GYRO 微窗口特征
+│   │   ├── micro_cache.py                # micro 特征缓存 ABI
+│   │   └── diagnostics.py                # 逐受试者诊断
+│   ├── data/                             # raw/会话与 fold split 读取
+│   └── eval/                             # 官方 IoU 匹配与指标
+├── scripts/                              # 入口与实现脚本
+│   ├── bootstrap_event_stack_diagnostics.py # 证据诊断修复
+│   ├── build_inference_distribution.py   # 生成 dist/inference
+│   ├── build_micro_features.py           # micro 特征缓存构建
+│   ├── build_submission.py               # 生成 dist/submission
+│   ├── crossfit_event_stack.py           # nested 评估实现
+│   ├── evaluate_event_stack.py           # 严格 nested 评估（薄封装）
+│   ├── official_iou_eval.py              # 官方匹配/评估
+│   ├── package_event_stack.py            # 生成 dist/event_stack
+│   ├── predict_event_stack.py            # serialized-payload 运行时入口
+│   ├── promote_event_stack.py            # 晋级实现
+│   ├── rank_events.py                    # 历史对照系统（依赖闭包保留）
+│   ├── rank_events_v2.py                 # 历史对照系统（依赖闭包保留）
+│   ├── release_event_stack.py            # 发布事务（原子替换）
+│   ├── reproduce_release.py              # 免训练验证发布链
+│   ├── slide_features.py                 # 历史 macro 生产器（fixture 锚定）
+│   ├── slide_verifier.py                 # 历史滑窗管线（parity 锚定）
+│   └── train_event_stack.py              # full-target 训练/晋级（薄封装）
+├── tests/                                # unit / integration / parity / release / pipeline（+fixtures）
+├── models/
+│   └── event_stack/<run_key>/            # promoted 5+1 bundle（不可变；attestation 锚定）
+├── release/
+│   └── event_stack_incumbent.json        # 当前发布指针（不可变）
+├── outputs/
+│   └── crossfit/                         # 正式五折证据（summary + 逐折 JSON）
+├── dist/                                 # 发布工作区（结构见 dist/README.md）
+├── docs/                                 # 审计、任务书、实施计划与数据处理说明
+├── cache/                                # 可重建缓存（.gitignore）
+├── FDdatasets/                           # KU Leuven FD-I/FD-II 外部数据
+├── ReferenceDocs/                        # 文献综述（报告引用素材）
+├── Archieves/                            # 历史归档（.gitignore）
+└── Data/                                 # 原始传感器数据（.gitignore）
 ```
 
 ## 8. 竞赛提交

@@ -241,6 +241,19 @@ _README = """# 独立 event-stack 推理包
 本目录由当前 promoted canonical release 自动生成，请勿手工修改 `event_stack/`；
 重建命令：`python scripts/build_inference_distribution.py`。
 
+## 包结构
+
+```text
+dist/inference/
+├── predict.py            # 独立推理入口（原始 collect_data*.txt → prediction JSON）
+├── event_stack/          # canonical 源码的机械 vendored 副本（勿手改）
+├── models/               # 冻结 deployment bundle（macro/micro/verifier 模型 + policy）
+├── manifest.json         # 逐文件 SHA-256 与 source/model 闭包
+├── feature_schema.json   # schema v2（macro 63 / micro 47 / verifier 116）
+├── requirements.txt      # 精确依赖 pin（来自 deployment manifest）
+└── README.md
+```
+
 安装精确记录的依赖后，即可对官方原始 `collect_data*.txt` 文件或其所在目录做预测：
 
 ```bash

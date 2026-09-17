@@ -5,18 +5,12 @@
 
 ```text
 dist/
-├── inference/    Canonical standalone model inference.
-│                 由 scripts/build_inference_distribution.py 从 canonical 源生成；
-│                 原始 collect_data*.txt 文件/文件夹 → 预测 JSON（见其 README）。
-├── visual/       团队可视化开发区。
-│                 只依赖 prediction schema 与 inference 输出（见 visual/README.md）。
-├── submission/   竞赛最终提交包（生成物）。
-│                 由 scripts/build_submission.py 生成；不得手工改算法文件。
-│                 官方 I/O 契约未定义 → 官方模式显式拒绝（见其 README）。
-├── examples/     Safe example inputs/outputs.
-│                 example_prediction.json —— 符合 schema 的合成示例（无真实数据）。
-└── schema/       Stable interface between inference and visualization.
-                  prediction.schema.json —— 预测 JSON 契约（v1.0）。
+├── inference/      # canonical 独立推理包（生成物）：原始 collect_data*.txt → 预测 JSON
+├── visual/         # 团队可视化开发区（只依赖 prediction schema 与 inference 输出）
+├── submission/     # 竞赛最终提交包（生成物）：raw 模式 + 官方 adapter 边界
+├── examples/       # 合成安全示例 example_prediction.json（符合 schema，无真实数据）
+├── schema/         # 稳定契约 prediction.schema.json（v1.0）
+└── event_stack/    # 旧 serialized-payload 运行时（发布证据，保留，勿手改）
 ```
 
 发布线：`160afaf81debf1ee`（严格 subject-disjoint nested 五折开发 F1 = 0.6514285714，
