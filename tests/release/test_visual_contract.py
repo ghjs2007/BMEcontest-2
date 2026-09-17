@@ -61,4 +61,4 @@ def test_visual_readme_documents_contract_boundaries():
     """Frontend developers need the schema path and the non-reimplementation rule."""
     readme = (VISUAL / "README.md").read_text(encoding="utf-8")
     assert "schema/prediction.schema.json" in readme
-    assert "must not reimplement" in readme.lower()
+    assert "不得重实现" in readme

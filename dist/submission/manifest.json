@@ -80,7 +80,7 @@
     }
   },
   "hashes": {
-    "README.md": "3b757b75a06276c411775c67967b5b9c02ffa2247a5e53fc0edecaa13e2d9687",
+    "README.md": "6f9cf080551f7509f00aa0ee666097c5fc5020c12e376036c68f89926a4df5cd",
     "event_stack/__init__.py": "e5a04716103fe98de3e37d10d8fb849a385aa40f539ce781ec57572ddccca508",
     "event_stack/artifacts.py": "1bd2aec8110fb2ddb806dc7e6e9c337e1af691dc30815eaeb01e493a76c0c5f1",
     "event_stack/candidate_control.py": "24899866fc03054b4eccb3858842ce3b2e0a1f4e0f1b449be8f097697b6937d2",
