@@ -80,7 +80,7 @@
     }
   },
   "hashes": {
-    "README.md": "96ca2bd16cb2c34868f088b538551a12f817f27a8d1c95e804018910f420353b",
+    "README.md": "3e3f872290f5ab29686bbce56b4b29d3f2edb7d100a8d9dccab8e9a55707ba31",
     "event_stack/__init__.py": "e5a04716103fe98de3e37d10d8fb849a385aa40f539ce781ec57572ddccca508",
     "event_stack/artifacts.py": "1bd2aec8110fb2ddb806dc7e6e9c337e1af691dc30815eaeb01e493a76c0c5f1",
     "event_stack/candidate_control.py": "24899866fc03054b4eccb3858842ce3b2e0a1f4e0f1b449be8f097697b6937d2",
@@ -95,7 +95,8 @@
     "event_stack/imu_features.py": "f6a3cf4e0e145cb8e105107eee77a7ae7bdd4ca4bb90457c7b91d65850fb1b4c",
     "event_stack/inference/__init__.py": "60e830b9e072c9d28956d40625251981b5ee922a33798864cefa94b96596fb65",
     "event_stack/inference/legacy_payload.py": "518f2465d8a484ebfc0583c78951a679fe5cb9cb679b609f7c686c1e14ed3a7a",
-    "event_stack/inference/predictor.py": "b356121d4ccf6a7b2002c5b3de7b77d430d70cca894acfd7e4ed8dced7a8a4bb",
+    "event_stack/inference/local_server.py": "8d1db900ee4ba1a0a47717a8889758e7a5d6577a53d82618020f2e2cf1da0504",
+    "event_stack/inference/predictor.py": "afe4199dd4fadde5b56a1a75211bd41f436c6b03e0fdf6ff3a55c075807e2c97",
     "event_stack/inference/schema.py": "4db90d39276a0071f6584fbb07b9fa5fa70e555bf7b3caf69d0b5dad0a5ce013",
     "event_stack/io/__init__.py": "4e5c6289b82558ac53eb08c9ed8bcad05391b40bc309f1bdccf718bfb0ed15cc",
     "event_stack/io/raw_session.py": "aad482f75d2552d4bef01ace26a6b9c7ad4be86532f26b327aefad7cca47a7a6",
@@ -110,7 +111,8 @@
     "models/verifier_lgbm.joblib": "03c333fed5002f93905dcd891981e3ac7e149d6b5912e4862f9105c9d537225f",
     "models/verifier_logistic.joblib": "614af1d790757cbbf8878c2b0ffee7aca933f3831ae976c400b9be0d66a64140",
     "predict.py": "273f7c464496919555ef21d81f73f46109a487392882d68428680b93ca0df4da",
-    "requirements.txt": "8997d24ed8b11e729529156f4877e068ea0068659dec3aa88034c76a11baf56a"
+    "requirements.txt": "8997d24ed8b11e729529156f4877e068ea0068659dec3aa88034c76a11baf56a",
+    "serve.py": "a76fee6773d8b95d1060f3ad3ad8daae44d3e72096e1684473d29a0bab882057"
   },
   "model_files": [
     "models/feature_schema.json",
@@ -126,6 +128,7 @@
   "python_version": "3.11.15",
   "release_run_key": "160afaf81debf1ee",
   "source_files": [
+    "README.md",
     "event_stack/__init__.py",
     "event_stack/artifacts.py",
     "event_stack/candidate_control.py",
@@ -140,11 +143,16 @@
     "event_stack/imu_features.py",
     "event_stack/inference/__init__.py",
     "event_stack/inference/legacy_payload.py",
+    "event_stack/inference/local_server.py",
     "event_stack/inference/predictor.py",
     "event_stack/inference/schema.py",
     "event_stack/io/__init__.py",
     "event_stack/io/raw_session.py",
     "event_stack/preprocessing/__init__.py",
-    "event_stack/preprocessing/timeline.py"
+    "event_stack/preprocessing/timeline.py",
+    "feature_schema.json",
+    "predict.py",
+    "requirements.txt",
+    "serve.py"
   ]
 }

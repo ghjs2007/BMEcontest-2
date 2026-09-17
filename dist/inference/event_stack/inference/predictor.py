@@ -57,6 +57,11 @@ class InferenceTrace:
     event_threshold: float
     threshold_tie_rule: str = "score >= threshold"
     decision_boundary_epsilon: float = 1e-12
+    # Optional window references (session_id, start_ms, end_ms) aligned with
+    # macro/micro probabilities; used only to emit the optional, presentation-only
+    # timeline series. They never feed candidates, scoring, or the event decoder.
+    macro_window_refs: tuple[tuple[str, int, int], ...] = ()
+    micro_window_refs: tuple[tuple[str, int, int], ...] = ()
 
 
 def _positive_probability(model: object, features: np.ndarray, width: int, name: str) -> np.ndarray:
@@ -83,6 +88,41 @@ def _by_session(windows: Sequence[EventRef], scores: np.ndarray) -> dict[str, li
     for window, score in zip(windows, scores):
         result.setdefault(window.sid, []).append((window.start_ms, window.end_ms, float(score)))
     return result
+
+
+def _timeline_series(trace: "InferenceTrace") -> list[dict[str, object]]:
+    """Optional per-timestamp probability series (presentation-only, schema v1.0).
+
+    Macro and micro windows have different cadences; the series samples the union of
+    their window starts and holds each stream's latest value (a step function). This is
+    deterministic, label-free, and never alters candidates, scores, or decoded events.
+    """
+    by_session: dict[str, dict[str, list[tuple[int, float]]]] = {}
+    for refs, probabilities, key in (
+        (trace.macro_window_refs, trace.macro_probabilities, "macro_probability"),
+        (trace.micro_window_refs, trace.micro_probabilities, "micro_probability"),
+    ):
+        if len(refs) != len(probabilities):
+            return []
+        for (sid, start_ms, _end_ms), value in zip(refs, probabilities):
+            by_session.setdefault(str(sid), {"macro_probability": [], "micro_probability": []})[key].append((int(start_ms), float(value)))
+    points: list[dict[str, object]] = []
+    for sid in sorted(by_session):
+        streams = by_session[sid]
+        macro = dict(streams["macro_probability"])
+        micro = dict(streams["micro_probability"])
+        last_macro = last_micro = 0.0
+        for timestamp in sorted(set(macro) | set(micro)):
+            if timestamp in macro:
+                last_macro = macro[timestamp]
+            if timestamp in micro:
+                last_micro = micro[timestamp]
+            points.append({
+                "session_id": sid, "timestamp_ms": timestamp,
+                "macro_probability": last_macro, "micro_probability": last_micro,
+                "valid": True, "gap": False,
+            })
+    return points
 
 
 def _config(raw: object, cls):
@@ -199,6 +239,9 @@ class Predictor:
                 "session_ids": [source.session_id for source in sources],
                 "macro_windows": len(trace.macro_features_62), "micro_windows": len(trace.micro_features),
             }
+            series = _timeline_series(trace)
+            if series:
+                result["timeline"]["series"] = series
             result["gaps"] = gap_rows
         validate_prediction(result)
         return result
@@ -286,4 +329,6 @@ class Predictor:
             candidates=candidate_rows, admitted=admitted_rows, verifier_scores=scored,
             events=events, admission_threshold=float(admission.threshold),
             event_threshold=float(self._bundle.policy["threshold"]),
+            macro_window_refs=tuple((w.sid, int(w.start_ms), int(w.end_ms)) for w in macro_windows),
+            micro_window_refs=tuple((w.sid, int(w.start_ms), int(w.end_ms)) for w in micro_windows),
         )

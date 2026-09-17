@@ -1,79 +1,160 @@
-# 可视化工作区契约
+# EatingSense Visual（可视化应用）
 
-本目录是团队可视化应用的开发区。当前刻意保持为空：在这里开发的前端代码只能消费
-canonical 预测输出，不能包含任何算法实现。
+腕部 IMU 进食事件检测的实验台界面：证据时间轴、原始 IMU/姿态查看器、进食事件列表、
+发布指标与三维动作回放。前端**只消费** canonical 预测契约与运动遥测，不实现任何模型
+逻辑；原始 TXT 推理始终由本地 Python 服务完成。
 
-## 前端可以拿到什么
+## 概述
 
-只支持以下三种接口：
+- 技术栈：React + TypeScript + Vite + Three.js；Canvas 时间轴；三视图（3D/Side/Top）
+  刚体动作回放（前臂/腕/手/手表一体）。
+- 两种运行模式：**静态/演示模式**（直接打开构建产物即可，无后端）与**完整分析模式**
+  （本地推理服务在线时，可选择 TXT 文件/文件夹做真实 canonical 推理）。
+- 物理诚实：真实数据的姿态回放需要显式标定（单位、坐标映射）；缺标定时显示
+  "Orientation unavailable"，绝不伪造动作或绝对轨迹。
 
-1. `dist/schema/prediction.schema.json` —— 稳定的 JSON 契约；
-2. `dist/examples/example_prediction.json` —— 符合 schema 的合成安全示例
-   （`input.source == "synthetic-example"`，不含真实传感器数据）；
-3. `dist/inference` 产出的预测 JSON（`python predict.py ...`）或 canonical
-   `Predictor` API 的输出。
-
-前端**不得重实现**阈值判定、候选准入、事件融合、解码或任何特征提取。预测 JSON 里没有
-给出的决策，就不是前端该计算的东西。
-
-## 预测 JSON 结构
-
-始终存在的必需字段：
-
-| 字段 | 含义 |
-|---|---|
-| `schema_version` | 契约版本，当前为 `"1.0"`。 |
-| `model.name` / `model.run_key` | 固定为 `"event-stack"` 与冻结的 release key。 |
-| `input.source` / `input.duration_seconds` | 输入描述与覆盖时长。 |
-| `events[]` | 最终解码出的进食事件。 |
-| `diagnostics.coverage` / `diagnostics.warnings` / `diagnostics.resolved_device` | 覆盖率、告警、执行设备。 |
-
-`events[]` 记录：
-
-| 键 | 含义 |
-|---|---|
-| `id` | 从 0 开始的稠密序号；数组顺序即 canonical 顺序。 |
-| `session_id`、`start_ms`、`end_ms` | 事件区间（原始会话时间戳）。 |
-| `duration_s` | `(end_ms - start_ms) / 1000`，精确值。 |
-| `confidence` | 冻结解码器的最终分数，`[0, 1]`。 |
-
-可选调试块（用 `--include-timeline` / `--include-candidates` 请求，永远不是必需字段）：
-
-- `candidates[]`：`session_id`、`start_ms`、`end_ms`、`score`、`admitted`——并集候选
-  全量及准入是否通过。被拒绝的候选（`admitted: false`）也属于展示契约，界面可以据此
-  说明某段为什么被/未被输出为事件。
-- `gaps[]`：`session_id`、`start_ms`、`end_ms`——有效段之间的未记录区间。按"无数据"
-  渲染，绝不在缺口上做插值。
-- `timeline`：`session_ids`、`macro_windows`、`micro_windows` 计数，外加可选的
-  逐时间点 `series[]`：`timestamp_ms`、`macro_probability`、`micro_probability`、
-  `valid`、`gap`。`gap: true` 的点携带 `valid: false` 与零概率；请渲染为"无数据"，
-  而不是实测的零值。
-
-## 渲染建议
-
-建议的展示层（全部由预测 JSON 驱动，不做任何重算）：
+## 目录结构
 
 ```text
-raw activity（仅作参考，来自会话文件本身）
-macro probability          timeline.series[].macro_probability
-micro probability          timeline.series[].micro_probability
-candidate regions          candidates[]（admitted 与 rejected 区分）
-verifier decisions         candidates[].admitted
-final eating episodes      events[]
+dist/visual/
+├── index.html                 # 构建产物：浏览器入口（生成，勿手改）
+├── assets/                    # 构建产物：哈希化 JS/CSS（生成，勿手改）
+├── runtime/
+│   └── release-metadata.json  # 生成：发布指标（来自 incumbent registry + crossfit summary）
+├── README.md
+├── IMPLEMENTATION_NOTES.md    # 审计与实现说明（含物理/坐标限制）
+├── app/                       # 前端开发目录（Vite 根）
+│   ├── index.html             # Vite 源入口
+│   ├── package.json / package-lock.json / tsconfig.json / vite.config.ts
+│   └── src/
+│       ├── main.tsx  App.tsx               # 入口与顶层状态（单一播放时钟）
+│       ├── pages/                          # MonitorPage / EventsPage / ModelPage
+│       ├── components/                     # TopNav / StatusHeader / SessionBrowser / DataLoader
+│       │   ├── timeline/                   # Timeline.tsx + timelineMath.ts
+│       │   ├── inspector/                  # SelectedInterval / RawImuChart / EventContext
+│       │   └── motion/                     # MotionReplay.tsx + ForearmModel.ts
+│       ├── motion/                         # quaternion / coordinateFrame / orientation / interpolation
+│       ├── data/                           # types / prediction / telemetry / loader / format / demo
+│       ├── runtime/                        # inferenceClient / capabilities
+│       ├── styles/app.css
+│       └── tests/                          # contract / timeline / orientation / loader
+└── tools/
+    ├── prepare-release.mjs                 # 生成 runtime/release-metadata.json（唯一来源）
+    ├── clean-build.mjs                     # 构建前清理旧 assets
+    └── export-motion.mjs                   # 独立 CLI：TXT → motion.json + motion.bin
 ```
 
-若 `timeline.series` 缺失（默认输出不包含），退化为事件层与候选层展示；不要自行合成
-概率曲线。
-
-## 开发说明
-
-- 前端代码放在本目录（`dist/visual/`）；本目录**不允许**出现 Python 算法文件——
-  发布测试会强制检查。
-- 用 schema 校验 fixture：
-  `python -m jsonschema -i dist/examples/example_prediction.json dist/schema/prediction.schema.json`
-- 生产真实预测 JSON 可用自包含推理包：
+## 快速开始
 
 ```bash
-cd dist/inference
-python predict.py path/to/collect_data1_2_3.txt --output prediction.json --include-timeline --include-candidates
+cd dist/visual/app
+npm ci            # 或 npm install
+npm run dev       # 开发预览：http://127.0.0.1:5173/
+npm test          # vitest
+npm run build     # 生产构建 → dist/visual/index.html + assets/
+```
+
+构建后的页面可直接双击打开演示数据；浏览器本地文件策略可能阻止读取发布指标，
+此时用任意静态服务器托管仓库根目录即可。
+
+## 竞赛启动器
+
+`dist/start.bat`（Windows 双击）：
+
+1. 定位发行目录（基于脚本相对路径，无硬编码路径）；
+2. 启动本地推理服务 `dist/inference/serve.py`（仅绑定 127.0.0.1，默认端口 4173）；
+3. 同源提供 `dist/visual/` 静态页面与 `/api/*` 接口；
+4. 服务就绪后自动打开浏览器。
+
+若 Python 依赖缺失会给出明确提示（不自动安装大依赖）；端口被占用时给出明确报错。
+
+## 开发
+
+`cd dist/visual/app && npm run dev`。开发服务器仅用于前端预览；`predev`/`prebuild`
+钩子会先刷新 `runtime/release-metadata.json`。
+
+## 生产构建
+
+`npm run build` = `prepare-release` + `clean-build` + `tsc --noEmit` + `vite build`。
+Vite 根为 `app/`，输出回写到发行根（`../index.html`、`../assets/`），因此构建产物与
+前端源码分离、互不覆盖。运行已构建页面不需要 Node。
+
+## 演示模式
+
+打开页面即进入确定性演示数据（界面明确标注 **DEMO DATA**，模型 run key 为
+`DEMO — not a release`）。演示不依赖本地推理服务，可离线展示全部交互。
+
+## 分析 TXT 文件（需要本地推理服务）
+
+1. 启动 `dist/start.bat`（或 `python dist/inference/serve.py --open`）；
+2. **Select TXT files** 选择一个或多个 `collect_data*.txt`；
+3. 前端把原始文件发送到本地推理服务，由 canonical Predictor 完成推理，返回预测契约
+   与运动遥测（浏览器不做任何特征/阈值/解码计算）；
+4. 状态栏依次显示 `Preparing files… → Running inference… → Loading timeline… → Ready`。
+
+文件名须符合仓库既有约定 `collect_data*.txt`；无关文件会被忽略并在状态栏报告。
+
+## 分析文件夹
+
+**Select folder** 使用浏览器目录选择器（`webkitdirectory`）。相对目录结构会被保留，
+用于会话识别；当浏览器不支持目录选择时，继续使用 **Select TXT files** 作为回退。
+
+## 打开已有预测（高级）
+
+**Open existing prediction** 加载已产出的 `prediction.json`（可同时选择配套的
+`motion.json` + `motion.bin`）。该路径适用于调试、复现与离线分析；运动遥测的
+`session_id` 必须与预测中的会话匹配。
+
+## 预测契约
+
+稳定契约：`dist/schema/prediction.schema.json`（v1.0）；合成安全示例：
+`dist/examples/example_prediction.json`。界面消费 `events` / `candidates` / `gaps` /
+`timeline`（含可选逐点 `series`）与 `diagnostics`。前端**不得重实现**阈值判定、
+候选准入、事件融合、解码或任何特征提取；预测 JSON 里没有给出的决策，就不是前端该
+计算的东西。
+
+## 运动遥测
+
+可视化遥测与算法预测分离：`motion.json`（v1 manifest）+ `motion.bin`
+（`f64_ms_6xf32_le`：float64 毫秒时间戳 + 6 个 float32 原始 IMU 通道）。
+本地推理服务从上传的 TXT 通过 canonical 会话解析器导出，与 `tools/export-motion.mjs`
+的独立 CLI 格式一致；高采样数据保持二进制，时间轴仅在绘制时降采样。遥测以原始单位
+（通常 `raw_adc`）声明，未标定前不宣称物理单位。
+
+## Motion Replay
+
+- 回放的是 **IMU 推导的姿态**（互补滤波，标定可用时），不是动作捕捉；
+- 前臂/腕/手/手表为一个刚体；不推断独立腕关节角、肘部关节或绝对三维位置；
+- 不对加速度做双重积分伪造轨迹；数据缺口不插值（分段显示）；
+- 三视图 3D / Side / Top，OrbitControls 仅 3D 模式；播放 0.25×/0.5×/1×/2×。
+
+## 传感器标定限制
+
+真实数据的姿态回放需要：时间单位、ACC/GYRO 单位、轴序与符号约定、传感器→查看器
+坐标映射。任一缺失时界面显示 "Orientation unavailable · raw sensor calibration
+required"，原始 ACC/GYRO 仍可按声明单位查看。
+
+## 浏览器兼容性
+
+Chrome/Edge 等 Chromium 浏览器支持目录选择与完整交互；Firefox/Safari 的目录选择
+支持不一，使用文件多选回退即可完成同样分析。
+
+## 测试
+
+```bash
+cd dist/visual/app
+npm ci
+npm test          # contract / timeline / orientation / loader 四组测试
+```
+
+Python 侧桥接测试：`python -m pytest tests/integration/test_local_server.py`
+（真实会话的 TXT → 桥 → canonical 预测契约一致性、遥测往返、路径遍历拒绝）。
+
+## 清洁环境验证
+
+```bash
+cd dist/visual/app
+npm ci && npm test && npm run build
+# 打开 dist/visual/index.html（或托管仓库根目录）验证演示模式
+dist\start.bat   # 验证完整分析模式：选择单个 TXT / 多个 TXT / 文件夹
 ```

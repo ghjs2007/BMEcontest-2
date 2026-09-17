@@ -54,7 +54,7 @@ def test_published_schema_rejects_malformed_series_point():
 def test_visual_workspace_has_no_algorithm_python():
     """Visualization displays canonical output; it may not reimplement decisions."""
     assert VISUAL.is_dir()
-    assert not list(VISUAL.rglob("*.py"))
+    assert not [path for path in VISUAL.rglob("*.py") if "node_modules" not in path.parts]
 
 
 def test_visual_readme_documents_contract_boundaries():

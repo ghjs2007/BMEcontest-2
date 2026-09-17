@@ -34,7 +34,7 @@ from src.pipeline.artifacts import (  # noqa: E402
 )
 
 
-_RUNTIME_ROOT_MODULES = ("src.pipeline.inference.predictor",)
+_RUNTIME_ROOT_MODULES = ("src.pipeline.inference.predictor", "src.pipeline.inference.local_server")
 _PIN_NAMES = (
     ("numpy", "numpy"),
     ("joblib", "joblib"),
@@ -236,6 +236,56 @@ if __name__ == "__main__":
 '''
 
 
+_SERVE_ENTRYPOINT = '''"""Local inference bridge entry: canonical inference API + static visual application.
+
+Serves the visualization at http://127.0.0.1:PORT/ (default 4173) and the bridge API
+under /api/*. Raw TXT selections from the browser are analyzed by the canonical
+Predictor shipped in this package; numbers, events, and telemetry are never computed
+in the browser.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import sys
+
+_ROOT = Path(__file__).resolve().parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from event_stack.inference import local_server
+
+
+def _args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=4173)
+    parser.add_argument("--visual-dir", type=Path, default=_ROOT.parent / "visual")
+    parser.add_argument("--open", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = _args(argv)
+    try:
+        manifest = json.loads((_ROOT / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"local inference bridge refused: {exc}", file=sys.stderr)
+        return 2
+    forwarded = ["--bundle", str(_ROOT / "models"), "--run-key", str(manifest["release_run_key"]),
+                 "--host", args.host, "--port", str(args.port)]
+    if args.visual_dir:
+        forwarded += ["--visual-dir", str(args.visual_dir)]
+    if args.open:
+        forwarded.append("--open")
+    return local_server.main(forwarded)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
 _README = """# 独立 event-stack 推理包
 
 本目录由当前 promoted canonical release 自动生成，请勿手工修改 `event_stack/`；
@@ -265,18 +315,29 @@ python predict.py path/to/subject-folder --output prediction.json --include-time
 支持 `--device cpu`。当前发布没有经过审计的 CUDA 适配器，强制 `--device gpu` 或
 `--device cuda` 会被明确拒绝，而不是静默回退到 CPU。输出 JSON 遵循
 `dist/schema/prediction.schema.json`。
+
+## 可视化本地服务（serve.py）
+
+`python serve.py --open` 启动本地推理桥（仅绑定 127.0.0.1，默认端口 4173）：同源
+提供 `../visual/` 的静态前端与 `/api/*` 接口（`/api/health`、`/api/upload`、
+`/api/analyze`、`/api/artifacts/...`）。浏览器中选择 collect_data*.txt 文件/文件夹后，
+由本包的 canonical Predictor 完成推理并返回预测契约与运动遥测；前端不实现任何模型逻辑。
+`dist/start.bat` 即为该服务的一键启动器。
 """
 
 
 def _distribution_files(root: Path) -> dict[str, str]:
+    """Every shipped file except the manifest itself; local bytecode never counts."""
     return {
         path.relative_to(root).as_posix(): _sha256(path)
         for path in sorted(root.rglob("*"), key=lambda item: item.as_posix())
         if path.is_file() and not path.is_symlink() and path.name != "manifest.json"
+        and "__pycache__" not in path.parts and path.suffix != ".pyc"
     }
 
 
 def verify_distribution_manifest(package: Path, *, entrypoint: str = "predict.py",
+                                 extra_entries: Sequence[str] = (),
                                  required_roots: Sequence[str] = ("event_stack", "models")) -> None:
     """Reject hash drift, symlinks and undeclared runtime files.
 
@@ -287,7 +348,7 @@ def verify_distribution_manifest(package: Path, *, entrypoint: str = "predict.py
     package = Path(package)
     if package.is_symlink() or not package.is_dir():
         raise ValueError("distribution package must be a real directory")
-    generated = _GENERATED_BASE_FILES | {entrypoint}
+    generated = _GENERATED_BASE_FILES | {entrypoint} | set(extra_entries)
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
     required = {"release_run_key", "model_version", "prediction_schema_version", "feature_schema", "python_version", "dependencies", "model_files", "source_files", "hashes"}
     if not isinstance(manifest, dict) or set(manifest) != required:
@@ -301,8 +362,7 @@ def verify_distribution_manifest(package: Path, *, entrypoint: str = "predict.py
     if manifest["hashes"] != actual:
         raise ValueError("distribution manifest file checksums do not match")
     model_files = sorted(path for path in actual if path.startswith("models/"))
-    source_files = sorted(path for path in actual
-                          if not path.startswith("models/") and path not in generated)
+    source_files = sorted(path for path in actual if not path.startswith("models/"))
     if manifest["source_files"] != source_files or manifest["model_files"] != model_files:
         raise ValueError("distribution manifest source/model closure does not match")
 
@@ -371,11 +431,13 @@ def _copy_tree(source: Path, target: Path) -> None:
         _copy_file(source, target)
         return
     shutil.copytree(source, target, symlinks=False, copy_function=_copy_file,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
+                                                  "node_modules", ".vite", "coverage"))
 
 
 def build_distribution(*, repository_root: Path, bundle_path: Path, destination: Path,
                        entrypoint: str, entrypoint_text: str, readme_text: str,
+                       extra_entrypoints: Sequence[tuple[str, str]] = (),
                        closure_roots: Sequence[str] = _RUNTIME_ROOT_MODULES,
                        models_source: Path | None = None, models_destination: str = "models",
                        extra_trees: Sequence[tuple[Path, str]] = (),
@@ -407,6 +469,8 @@ def build_distribution(*, repository_root: Path, bundle_path: Path, destination:
         for source, relative in extra_trees:
             _copy_tree(source, staging / relative)
         (staging / entrypoint).write_text(entrypoint_text, encoding="utf-8", newline="\n")
+        for extra_name, extra_text in extra_entrypoints:
+            (staging / extra_name).write_text(extra_text, encoding="utf-8", newline="\n")
         (staging / "requirements.txt").write_text(_requirements(bundle), encoding="utf-8", newline="\n")
         shutil.copy2(bundle / "feature_schema.json", staging / "feature_schema.json")
         (staging / "README.md").write_text(readme_text, encoding="utf-8", newline="\n")
@@ -422,25 +486,24 @@ def build_distribution(*, repository_root: Path, bundle_path: Path, destination:
         }
         manifest["hashes"] = _distribution_files(staging)
         manifest["model_files"] = sorted(path for path in manifest["hashes"] if path.startswith("models/"))
-        manifest["source_files"] = sorted(
-            path for path in manifest["hashes"]
-            if not path.startswith("models/") and path not in (_GENERATED_BASE_FILES | {entrypoint})
-        )
+        manifest["source_files"] = sorted(path for path in manifest["hashes"] if not path.startswith("models/"))
         (staging / "manifest.json").write_bytes(_json_bytes(manifest))
-        verify_distribution_manifest(staging, entrypoint=entrypoint, required_roots=required_roots)
+        extra_names = tuple(name for name, _ in extra_entrypoints)
+        verify_distribution_manifest(staging, entrypoint=entrypoint, extra_entries=extra_names, required_roots=required_roots)
         probe_environment = dict(os.environ)
         probe_environment["PYTHONDONTWRITEBYTECODE"] = "1"
-        probe = subprocess.run(
-            [sys.executable, "-I", entrypoint, "--help"], cwd=staging,
-            capture_output=True, text=True, env=probe_environment,
-        )
-        if probe.returncode != 0:
-            raise RuntimeError("isolated distribution import probe failed: " + probe.stderr.strip())
+        for probe_entry in (entrypoint, *extra_names):
+            probe = subprocess.run(
+                [sys.executable, "-I", probe_entry, "--help"], cwd=staging,
+                capture_output=True, text=True, env=probe_environment,
+            )
+            if probe.returncode != 0:
+                raise RuntimeError(f"isolated distribution import probe failed ({probe_entry}): " + probe.stderr.strip())
         # A distribution is source/model only.  The isolated import probe must
         # not make bytecode a generated runtime dependency.
         for cache in staging.rglob("__pycache__"):
             shutil.rmtree(cache)
-        verify_distribution_manifest(staging, entrypoint=entrypoint, required_roots=required_roots)
+        verify_distribution_manifest(staging, entrypoint=entrypoint, extra_entries=extra_names, required_roots=required_roots)
         return _atomic_replace(staging, destination)
     except Exception:
         if staging.exists():
@@ -453,6 +516,7 @@ def build_inference_distribution(*, repository_root: Path, bundle_path: Path, de
     return build_distribution(
         repository_root=repository_root, bundle_path=bundle_path, destination=destination,
         entrypoint="predict.py", entrypoint_text=_PREDICT_ENTRYPOINT, readme_text=_README,
+        extra_entrypoints=(("serve.py", _SERVE_ENTRYPOINT),),
     )
 
 

@@ -27,3 +27,11 @@ python predict.py path/to/subject-folder --output prediction.json --include-time
 支持 `--device cpu`。当前发布没有经过审计的 CUDA 适配器，强制 `--device gpu` 或
 `--device cuda` 会被明确拒绝，而不是静默回退到 CPU。输出 JSON 遵循
 `dist/schema/prediction.schema.json`。
+
+## 可视化本地服务（serve.py）
+
+`python serve.py --open` 启动本地推理桥（仅绑定 127.0.0.1，默认端口 4173）：同源
+提供 `../visual/` 的静态前端与 `/api/*` 接口（`/api/health`、`/api/upload`、
+`/api/analyze`、`/api/artifacts/...`）。浏览器中选择 collect_data*.txt 文件/文件夹后，
+由本包的 canonical Predictor 完成推理并返回预测契约与运动遥测；前端不实现任何模型逻辑。
+`dist/start.bat` 即为该服务的一键启动器。

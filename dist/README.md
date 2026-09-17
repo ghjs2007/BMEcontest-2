@@ -5,11 +5,14 @@
 
 ```text
 dist/
-├── inference/      # canonical 独立推理包（生成物）：原始 collect_data*.txt → 预测 JSON
-├── visual/         # 团队可视化开发区（只依赖 prediction schema 与 inference 输出）
+├── inference/      # canonical 独立推理包（生成物）：原始 collect_data*.txt → 预测 JSON；
+│                   # 附 serve.py 本地推理桥（可视化同源调用）
+├── visual/         # 团队可视化应用（React+TS+Vite）：源码在 visual/app/，
+│                   # 构建产物 index.html/assets/runtime 在根；演示模式无需后端
 ├── submission/     # 竞赛最终提交包（生成物）：推理接口 + 完整模型证据链 + 复现代码 + 可视化
 ├── examples/       # 合成安全示例 example_prediction.json（符合 schema，无真实数据）
 ├── schema/         # 稳定契约 prediction.schema.json（v1.0）
+├── start.bat       # 竞赛一键启动器：本地推理服务 + 浏览器
 └── event_stack/    # 旧 serialized-payload 运行时（发布证据，保留，勿手改）
 ```
 
@@ -24,6 +27,17 @@ python scripts/build_inference_distribution.py     # 重建 dist/inference/
 python scripts/build_submission.py                 # 重建 dist/submission/
 ```
 
+## 一键启动（可视化 + 本地推理服务）
+
+```text
+双击 dist/start.bat
+```
+
+启动器基于脚本相对路径定位发行目录，启动 `dist/inference/serve.py`（仅绑定
+127.0.0.1，默认端口 4173），同源提供 `dist/visual/` 静态应用与 `/api/*` 推理接口，
+就绪后自动打开浏览器；在页面中选择 `collect_data*.txt` 文件/文件夹即可运行
+canonical 推理并查看结果。
+
 ## 快速推理（inference 包）
 
 ```bash
@@ -31,6 +45,7 @@ cd dist/inference
 python -m pip install -r requirements.txt
 python predict.py path/to/collect_data1_2_3.txt --output prediction.json
 python predict.py path/to/subject-folder --output prediction.json --include-timeline
+python serve.py --open     # 本地推理桥 + 可视化（等价于 dist/start.bat）
 ```
 
 `--device cpu` 支持；当前发布没有经过审计的 CUDA 适配器，`--device gpu/cuda`

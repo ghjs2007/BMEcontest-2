@@ -103,7 +103,12 @@ git 历史）：
 对照系统（检测即排序 + FD 预训练微调）均值 ~0.27，仅作历史对照，其代码已清理
 （见 §10 与 `tests/fixtures/deletion_manifest.json`）。
 
-## 5. 快速推理
+## 5. 快速推理与可视化
+
+**一键启动（竞赛演示）**：双击 `dist/start.bat` —— 启动本地推理服务
+（`dist/inference/serve.py`，仅绑定 127.0.0.1）并打开可视化应用；在页面中选择
+`collect_data*.txt` 文件/文件夹即可运行 canonical 推理，查看证据时间轴、原始 IMU、
+候选/事件与三维动作回放（`dist/visual/`，前端不含任何算法实现）。
 
 `dist/inference/`（自包含、纯 CPU、无仓库依赖）：
 
@@ -235,11 +240,19 @@ python main.py --official-input IN --output OUT                 # 退出码 2：
 前显式拒绝，绝不猜测线格式（`src/pipeline/inference/competition_adapter.py`）；
 可用接口（raw CLI / Predictor API / 预测 schema）见包内 README。
 
-## 9. 可视化契约
+## 9. 可视化应用与契约
 
-`dist/schema/prediction.schema.json`（v1.0）+ `dist/examples/example_prediction.json`
-（合成安全示例）+ `dist/visual/README.md`（前端开发契约）。前端只消费 canonical
-预测 JSON（事件/候选/缺口/可选 timeline series），不得重实现阈值、准入、融合或解码。
+`dist/visual/` 是已实现的可视化应用（React + TypeScript + Vite + Three.js，源码在
+`visual/app/`，构建产物 `index.html`/`assets/`/`runtime/` 在发行根）：证据时间轴
+（Motion/Macro/Micro/Events 四轨、区间框选、缩放）、会话浏览器、原始 IMU 与姿态
+查看器、事件列表、发布指标页与三视图刚体动作回放（IMU 姿态重建，缺标定即如实显示
+不可用，绝不伪造轨迹）。两种模式：静态/演示（无后端，打开即用，明确标注 DEMO DATA）
+与完整分析（本地推理桥在线时，选择 TXT 文件/文件夹运行 canonical 推理）。
+
+契约：`dist/schema/prediction.schema.json`（v1.0，含可选 timeline series）+
+`dist/examples/example_prediction.json`（合成安全示例）+ `dist/visual/README.md`
+（使用与开发说明）。前端只消费 canonical 预测 JSON 与运动遥测（`motion.bin`
+`f64_ms_6xf32_le`），**不得重实现**阈值、准入、融合、解码或特征提取。
 
 ## 10. 限制与后续
 
