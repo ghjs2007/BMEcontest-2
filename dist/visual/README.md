@@ -3,6 +3,19 @@
 本目录是团队可视化应用的开发区。当前刻意保持为空：在这里开发的前端代码只能消费
 canonical 预测输出，不能包含任何算法实现。
 
+## 静态网页入口
+
+交付入口是 `dist/visual/index.html`。执行 `npm run build` 后，Vite 会把纯静态页面和资源直接生成在本目录；页面不需要 Node 或 Python 后端。可用任意静态服务器托管仓库根目录，例如：
+
+```powershell
+cd D:\BME\BMEcontest-2
+py -m http.server 4173
+```
+
+然后打开 `http://127.0.0.1:4173/dist/visual/`。直接双击页面可打开演示数据；浏览器本地文件策略可能阻止 Model 页读取发布指标，此时使用静态服务器即可。
+
+`npm run dev` 只用于开发预览；生产交付使用 `npm run build`。
+
 ## 前端可以拿到什么
 
 只支持以下三种接口：

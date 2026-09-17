@@ -1,0 +1,10 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+const root = resolve(import.meta.dirname, '../../..');
+const promoted = JSON.parse(await readFile(join(root, 'release/event_stack_incumbent.json'), 'utf8'));
+const summary = JSON.parse(await readFile(join(root, `outputs/crossfit/summary_${promoted.run_key}.json`), 'utf8'));
+const output = { run_key: promoted.run_key, outer_metrics: summary.outer_metrics };
+const target = join(root, 'dist/visual/public/release-metadata.json');
+await mkdir(resolve(target, '..'), { recursive: true });
+await writeFile(target, JSON.stringify(output, null, 2) + '\n');
+console.log(`Prepared release metadata for ${promoted.run_key}`);
