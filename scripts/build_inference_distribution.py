@@ -335,15 +335,42 @@ def _atomic_replace(staging: Path, destination: Path) -> Path:
             shutil.rmtree(backup)
 
 
+_TEXT_SUFFIXES = frozenset({
+    ".py", ".md", ".json", ".txt", ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".ts",
+    ".yml", ".yaml", ".toml", ".cfg", ".ini", ".sh", ".bat", ".svg", ".map",
+})
+
+
+def _copy_file(source: Path, target: Path) -> None:
+    """Copy one file; text files are normalized to LF.
+
+    Byte stability matters: the distribution manifest hashes worktree bytes,
+    and git checks these files out with LF (``* text=auto eol=lf``).  Copying
+    CRLF worktree bytes would make a fresh clone fail manifest verification.
+    """
+    source = Path(source)
+    target = Path(target)
+    if source.suffix.lower() in _TEXT_SUFFIXES:
+        try:
+            text = source.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            shutil.copy2(source, target)
+            return
+        target.write_text(text.replace("\r\n", "\n").replace("\r", "\n"),
+                          encoding="utf-8", newline="\n")
+        return
+    shutil.copy2(source, target)
+
+
 def _copy_tree(source: Path, target: Path) -> None:
     """Copy a file or directory into the staging tree without bytecode."""
     source = Path(source)
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.is_file():
-        shutil.copy2(source, target)
+        _copy_file(source, target)
         return
-    shutil.copytree(source, target, symlinks=False,
+    shutil.copytree(source, target, symlinks=False, copy_function=_copy_file,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
 
 

@@ -70,6 +70,27 @@ def test_submission_packages_the_full_delivery(tmp_path: Path):
     assert "src/pipeline/inference/predictor.py" in manifest["source_files"]
 
 
+def test_distribution_text_bytes_are_lf_normalized(tmp_path: Path):
+    """Manifest hashes must survive a fresh clone: shipped text files are LF-only.
+
+    Git checks text files out with LF (``* text=auto eol=lf``); a package that
+    embedded CRLF worktree bytes would fail its own manifest verification after
+    checkout, so the builders normalize on copy.
+    """
+    from scripts.build_submission import build_submission
+
+    text_suffixes = {".py", ".md", ".json", ".txt", ".html", ".css", ".js"}
+    packages = [ROOT / "dist" / "inference",
+                build_submission(repository_root=ROOT, destination=tmp_path / "submission")]
+    for package in packages:
+        for path in package.rglob("*"):
+            if path.is_file() and path.suffix.lower() in text_suffixes:
+                try:
+                    assert b"\r" not in path.read_bytes(), f"CR byte in shipped text file: {path}"
+                except OSError:
+                    continue
+
+
 def test_submission_raw_mode_matches_predictor(tmp_path: Path):
     """The shipped submission must reproduce the canonical prediction document."""
     from scripts.build_submission import build_submission
