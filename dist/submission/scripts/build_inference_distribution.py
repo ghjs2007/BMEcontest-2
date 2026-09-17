@@ -396,8 +396,9 @@ def _atomic_replace(staging: Path, destination: Path) -> Path:
 
 
 _TEXT_SUFFIXES = frozenset({
-    ".py", ".md", ".json", ".txt", ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".ts",
-    ".yml", ".yaml", ".toml", ".cfg", ".ini", ".sh", ".bat", ".svg", ".map",
+    ".py", ".md", ".json", ".txt", ".html", ".htm", ".css", ".js", ".mjs", ".cjs",
+    ".ts", ".tsx", ".jsx", ".mts", ".cts", ".scss", ".yml", ".yaml", ".toml", ".cfg",
+    ".ini", ".sh", ".bat", ".svg", ".map",
 })
 
 

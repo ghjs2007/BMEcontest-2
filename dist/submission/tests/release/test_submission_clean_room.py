@@ -79,7 +79,7 @@ def test_distribution_text_bytes_are_lf_normalized(tmp_path: Path):
     """
     from scripts.build_submission import build_submission
 
-    text_suffixes = {".py", ".md", ".json", ".txt", ".html", ".css", ".js"}
+    text_suffixes = {".py", ".md", ".json", ".txt", ".html", ".css", ".js", ".ts", ".tsx", ".jsx", ".mjs"}
     packages = [ROOT / "dist" / "inference",
                 build_submission(repository_root=ROOT, destination=tmp_path / "submission")]
     for package in packages:
