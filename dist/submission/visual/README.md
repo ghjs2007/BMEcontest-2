@@ -55,6 +55,7 @@ npm run dev       # 开发预览：http://127.0.0.1:5173/
 npm test          # vitest（16 项）
 npm run build     # 生产构建 → dist/visual/index.html（自包含单文件）
 npm run e2e       # file:// 端到端冒烟（需系统 Edge 或 Chrome）
+npm run e2e:bridge # 真实 TXT 全链路（需 Python 环境，自动拉起本地推理服务）
 ```
 
 **双击 `dist/visual/index.html` 即可运行**：生产构建是自包含单文件（IIFE 内联脚本 +
@@ -70,7 +71,9 @@ npm run e2e       # file:// 端到端冒烟（需系统 Edge 或 Chrome）
 3. 同源提供 `dist/visual/` 静态页面与 `/api/*` 接口；
 4. 服务就绪后自动打开浏览器。
 
-若 Python 依赖缺失会给出明确提示（不自动安装大依赖）；端口被占用时给出明确报错。
+若 Python 依赖缺失，启动器会**询问后自动安装**（`pip install -r inference
+equirements.txt`，
+也可选择手动安装）；Python 缺失、安装失败或端口被占用都会给出明确提示并暂停窗口。
 
 ## 开发
 
@@ -150,7 +153,9 @@ Chrome/Edge 等 Chromium 浏览器支持目录选择与完整交互；Firefox/Sa
 ```bash
 cd dist/visual/app
 npm ci
-npm test          # contract / timeline / orientation / loader 四组测试
+npm test              # contract / timeline / orientation / loader 四组（16 项）
+npm run e2e           # file:// 演示模式冒烟（系统 Edge/Chrome）
+npm run e2e:bridge    # 完整分析模式：真实 TXT → canonical 推理 → UI（需 Python 环境）
 ```
 
 Python 侧桥接测试：`python -m pytest tests/integration/test_local_server.py`

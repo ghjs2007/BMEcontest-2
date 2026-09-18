@@ -23,6 +23,9 @@ export default function DataLoader({ capabilities, prediction, onDataset, onErro
   const folderInput = useRef<HTMLInputElement>(null);
   const existingInput = useRef<HTMLInputElement>(null);
   const bridgeReady = capabilities?.inference === true;
+  const unavailableHint = capabilities?.reason === 'file-protocol'
+    ? 'Opened as a local file: raw TXT analysis needs the local inference service — double-click dist\\start.bat and use the page it opens. Demo and existing prediction files stay available here.'
+    : 'Local inference service unavailable — start it with dist\\start.bat. Demo and existing prediction files are still available.';
 
   async function handleRaw(files: FileList | null, folder: boolean) {
     if (!files?.length) return;
@@ -92,7 +95,7 @@ export default function DataLoader({ capabilities, prediction, onDataset, onErro
         <button className="secondary" onClick={() => existingInput.current?.click()}>Open existing prediction</button>
         <button className="secondary" onClick={onResetDemo}>Reset demo</button>
       </div>
-      {!bridgeReady && <span className="loader-hint">Local inference service unavailable. Demo and existing prediction files are still available.</span>}
+      {!bridgeReady && <span className="loader-hint">{unavailableHint}</span>}
     </div>
   );
 }
