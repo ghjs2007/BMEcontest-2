@@ -35,6 +35,12 @@ if (styleMatch) {
   html = html.replace(styleMatch[0], () => `<style>\n${css}\n</style>`);
 }
 if (/(src|href)="\.\/assets\//.test(html)) throw new Error('make-standalone: external asset reference left in index.html');
+// Vite occasionally emits a bare CR around its injected tags; normalizing the whole
+// document to LF keeps the shipped bundle byte-identical to the repo convention
+// (`* text=auto eol=lf`) and to the copy the submission builder derives from it.
+// CR is a line terminator in HTML/CSS/JS alike, so folding it to LF is semantics-safe.
+html = html.replace(/\r\n?/g, '\n');
+if (/\r/.test(html)) throw new Error('make-standalone: CR byte left in index.html');
 await writeFile(htmlPath, html, 'utf8', { encoding: 'utf8' });
 
 let removed = 0;

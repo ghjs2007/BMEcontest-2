@@ -80,7 +80,7 @@
     }
   },
   "hashes": {
-    "README.md": "95e392d7eda05acf4e1c5e30bf9431eda5f5ec3624554a80b020a09c66463eb4",
+    "README.md": "f27540a92787a6b86a5884cd78f3d76dc920df6d186e2b4e89686ecc58f17442",
     "event_stack/__init__.py": "e5a04716103fe98de3e37d10d8fb849a385aa40f539ce781ec57572ddccca508",
     "event_stack/artifacts.py": "1bd2aec8110fb2ddb806dc7e6e9c337e1af691dc30815eaeb01e493a76c0c5f1",
     "event_stack/candidate_control.py": "24899866fc03054b4eccb3858842ce3b2e0a1f4e0f1b449be8f097697b6937d2",
@@ -160,7 +160,7 @@
     "scripts/bootstrap_event_stack_diagnostics.py": "2079d9a76929f6238aa645eb9fa1f4a32aaf1cda2ab5f80e7f10c43e9e1bc74b",
     "scripts/build_inference_distribution.py": "646dc040bc16acf661a0d5b53aa54db64c990287ee4a10af2e960dff7688aa6a",
     "scripts/build_micro_features.py": "b637ab129aec8e1f03075aad4c7c68fcf02e90317c3884b34afbc781d2bdc962",
-    "scripts/build_submission.py": "c7436afec2cc92ca3803917c50694f4eb1ca9b710247a25b87cb0213a32d0b58",
+    "scripts/build_submission.py": "5c29e996c7edd559092914bda2e4d71664dfc1ff8220867a3c7844fd0424ffed",
     "scripts/crossfit_event_stack.py": "cdda881b806d52a34e8ab61e182379c51ca1762d1ecff5f23256ee80aab6c71b",
     "scripts/evaluate_event_stack.py": "e2ec57cef8bc5d828ed6c6db35fb3d312886b566744f0d26181276f23c282c1d",
     "scripts/official_iou_eval.py": "682dcbae4cc205fba520af04270acb1b00c7e4ecf0db3bf75bb43376e24eea15",
@@ -210,7 +210,7 @@
     "src/pipeline/preprocessing/__init__.py": "6e4d105c148435fde4fad2ed3024232a1088a7dfd627ab091752d2ef43f15a6f",
     "src/pipeline/preprocessing/timeline.py": "76ad8c6e9d0554256f344da844438c8b42c35f2ab9f5ca64dc67998a737573a6",
     "src/pipeline/runner.py": "8aa85ed9879bf115ece3370daf09d2ed8d65e4052317ae39f94b92d30d9bdff4",
-    "start.bat": "1a62410c81b65de47d4a7723227c4bd18ebbbe2a861bafa1aafb7fabfa5c2d92",
+    "start.bat": "e3c27253994cc8b3e341c664e4a073d819449b1ce7773c8ed68d7e1d606a1cbd",
     "tests/fixtures/deletion_manifest.json": "92980195379770a4edfe890c437a1716036b20ea173850df97783073b1e6b2b4",
     "tests/fixtures/release_160afaf81debf1ee/README.md": "1782bbbb41a931fffa2d9d5297376bba5c9d957f8327ee25c76638b69797b013",
     "tests/fixtures/release_160afaf81debf1ee/fixture_manifest.json": "1087e808ca6dbd9275677d61ceaee2d18b961df8e73269d526d2473da3f0dfdd",
@@ -243,7 +243,7 @@
     "tests/unit/test_raw_session.py": "8a4719368feae6b7af30dac8d2dc7709d9c31b7a3aa6d38d8a651199091f5e9a",
     "tests/unit/test_timeline.py": "e788c23222b0abbbc68bbce8fed759f588ab1e9b87a93895487b5291a18e6ef7",
     "visual/IMPLEMENTATION_NOTES.md": "7b2cccd5c3c4cd895331863249f8914bbed56cc7a88476e06012c9b55ea6bcb6",
-    "visual/README.md": "412e1a7105b9f20e154232b43305ec322a0738ca93f62605b1fdb0e4f6f15c2c",
+    "visual/README.md": "ce25592f6a0f8c90ce843d4c57cb36ca5e53f55960924699cf5ace6df1f57eb7",
     "visual/app/index.html": "10794d2d74330570d2ceea742193bea361ae276b6c4b6dff8afc2923a36fa59d",
     "visual/app/package-lock.json": "876ffc6575a18be7c4fde5d4d8e075fd6150d30619fbe0cdf192ffd9390d5661",
     "visual/app/package.json": "2d0bf665158f80255083c06e4edd76b4a768b298794523314729464d1b79e81f",
@@ -290,7 +290,7 @@
     "visual/runtime/release-metadata.json": "bc490ecc5cfdce432e4154e0f83d234784bae8bbaa60e48ebfa562e08fd6137b",
     "visual/tools/clean-build.mjs": "fda8bfb4372efd5c084b333647e161dbf1611f8c207b51e62ec1075d41b350dc",
     "visual/tools/export-motion.mjs": "947d3dc2ca16148f52ec449571f7bf94eeedde71dd3e07b2efbbd46b5fa572f0",
-    "visual/tools/make-standalone.mjs": "e2c54ca39671e46f74a3dba67a5e6a7e706b9cc142ffe4b394fe86ba3f4b78f2",
+    "visual/tools/make-standalone.mjs": "450746235d59be63584cf4648f5fd695830920fe2bb2658c8af231100ac5269a",
     "visual/tools/prepare-release.mjs": "d7aa5fb024eea1173b0a8d8f964051f646199a63a446ffa232db0ebdfda1f771"
   },
   "model_files": [

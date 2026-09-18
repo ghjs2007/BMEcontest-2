@@ -7,6 +7,15 @@ where py >nul 2>nul && set "PY=py -3"
 if errorlevel 1 (
   echo [EatingSense] Python was not found on PATH.
   echo Install Python 3.11+ from https://www.python.org/downloads/ and run this file again.
+  echo During setup, tick "Add python.exe to PATH".
+  pause
+  exit /b 1
+)
+%PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo [EatingSense] Python 3.11 or newer is required. Found:
+  %PY% --version
+  echo Install Python 3.11+ from https://www.python.org/downloads/ and run this file again.
   pause
   exit /b 1
 )
@@ -19,33 +28,32 @@ if not defined SERVE (
   pause
   exit /b 1
 )
-rem Locate the pinned requirements file and a launcher-relative name for display.
+rem Locate the pinned requirements file (dist layout: inference\requirements.txt; submission layout: requirements.txt).
 set "REQ="
-set "REQREL="
-if exist "%~dp0inference\requirements.txt" (
-  set "REQ=%~dp0inference\requirements.txt"
-  set "REQREL=inference\requirements.txt"
+if exist "%~dp0inference\requirements.txt" set "REQ=%~dp0inference\requirements.txt"
+if not defined REQ if exist "%~dp0requirements.txt" set "REQ=%~dp0requirements.txt"
+if not defined REQ (
+  echo [EatingSense] requirements.txt was not found next to this launcher.
+  pause
+  exit /b 1
 )
-if not defined REQ if exist "%~dp0requirements.txt" (
-  set "REQ=%~dp0requirements.txt"
-  set "REQREL=requirements.txt"
-)
+rem Verify the pinned runtime dependencies and install them automatically on first
+rem run, so that reviewers can simply double-click this file (no questions asked).
 %PY% -c "import numpy, sklearn, joblib, lightgbm" >nul 2>nul
 if errorlevel 1 (
-  echo [EatingSense] Python dependencies are missing.
-  set /p ANS="Install them now from !REQREL!? [Y/N] "
-  if /i not "!ANS!"=="Y" (
-    echo Install them first with:
-    echo     python -m pip install -r !REQREL!
-    pause
-    exit /b 1
-  )
-  %PY% -m pip install --disable-pip-version-check -r "!REQ!"
+  echo [EatingSense] First run: installing required Python packages, this may take a few minutes...
+  echo     %PY% -m pip install -r "!REQ!"
+  %PY% -m pip install --no-input --disable-pip-version-check -r "!REQ!"
+  %PY% -c "import numpy, sklearn, joblib, lightgbm" >nul 2>nul
   if errorlevel 1 (
-    echo [EatingSense] Dependency installation failed - see the pip output above.
+    echo [EatingSense] Automatic installation failed. Install manually, then run this file again:
+    echo     %PY% -m pip install -r "!REQ!"
+    echo If the download is slow or blocked, retry with a mirror, for example:
+    echo     %PY% -m pip install -r "!REQ!" -i https://pypi.tuna.tsinghua.edu.cn/simple
     pause
     exit /b 1
   )
+  echo [EatingSense] Dependencies installed.
 )
 %PY% "%SERVE%" --open
 if errorlevel 1 pause

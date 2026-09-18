@@ -71,8 +71,8 @@ npm run e2e:bridge # 真实 TXT 全链路（需 Python 环境，自动拉起本�
 3. 同源提供 `dist/visual/` 静态页面与 `/api/*` 接口；
 4. 服务就绪后自动打开浏览器。
 
-若 Python 依赖缺失，启动器会**询问后自动安装**（`pip install -r inferenceequirements.txt`，
-也可选择手动安装）；Python 缺失、安装失败或端口被占用都会给出明确提示并暂停窗口。
+若 Python 依赖缺失，启动器**首次运行时会自动安装**（`pip install -r inference\requirements.txt`，
+无需任何交互）；Python 缺失、版本过旧、安装失败或端口被占用都会给出明确提示并暂停窗口。
 
 ## 开发
 

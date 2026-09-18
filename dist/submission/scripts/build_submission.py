@@ -134,8 +134,8 @@ _SUBMISSION_README = """# 竞赛提交包（event-stack）
 启动本地推理服务（仅绑定 127.0.0.1）并自动打开浏览器；在页面中选择
 `collect_data*.txt` 文件或所在文件夹，即可由本包的 canonical Predictor 完成推理，
 返回预测契约与运动遥测（浏览器不做任何特征/阈值/解码计算）。若缺少 Python 依赖，
-`start.bat` 会询问后自动执行 `pip install -r requirements.txt`（不静默安装），
-Python 缺失 / 安装失败 / 端口占用都会给出明确提示。
+`start.bat` 首次运行时会自动执行 `pip install -r requirements.txt`（无需任何交互），
+Python 缺失 / 版本过旧 / 安装失败 / 端口占用都会给出明确提示。
 
 ## 包结构
 

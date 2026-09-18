@@ -494,7 +494,7 @@ body(doc, "④ 交互式可视化应用——可视化工作区（visual/）以�
           "支持一键定位复查（图4）；Model 页展示发布元数据与推理路径。应用只消费预测契约"
           "（schema/prediction.schema.json）与运动遥测，不重实现任何算法决策；对真实数据，"
           "双击 start.bat 启动本地 canonical 推理服务（仅绑定 127.0.0.1，浏览器不做特征"
-          "计算），依赖缺失时经确认后自动安装。")
+          "计算），依赖缺失时首次运行自动安装（无需任何交互），双击即可完整使用。")
 p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 p.add_run().add_picture(str(fig3), width=Cm(14.0))
 caption(doc, "图3  可视化 Monitor 页：四轨证据时间轴、区间检查、原始 IMU 与三维动作回放（合成演示数据）")
