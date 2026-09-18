@@ -195,7 +195,7 @@ Command launched from repository root with cache disabled:
 
 ```powershell
 $env:PYTHONDONTWRITEBYTECODE='1'
-D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider
+python -m pytest -p no:cacheprovider
 ```
 
 Result: **299 passed, 2 skipped in 197.24s (0:03:17)**.  The command ran in a

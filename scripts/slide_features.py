@@ -8,7 +8,7 @@
 - 62 特征 = acc_y/z/mag/jerk 各 11 统计 + acc_x 姿态 7 + 1s 活动包络时间特征 11
   （本项目 raw 105Hz 直接算；时间特征基于 1s 包络序列与采样率无关）
 
-用法：D:/Anaconda3/envs/bme/python.exe scripts/slide_features.py --fold 0 --mode train|val|all
+用法：python scripts/slide_features.py（仓库根、bme 环境） --fold 0 --mode train|val|all
 产物：cache/slide/fold{k}_{mode}.npz（feat (n,62) + label + window_id (sid,s,e)）
 """
 import argparse

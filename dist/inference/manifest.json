@@ -84,7 +84,7 @@
     "event_stack/__init__.py": "e5a04716103fe98de3e37d10d8fb849a385aa40f539ce781ec57572ddccca508",
     "event_stack/artifacts.py": "1bd2aec8110fb2ddb806dc7e6e9c337e1af691dc30815eaeb01e493a76c0c5f1",
     "event_stack/candidate_control.py": "24899866fc03054b4eccb3858842ce3b2e0a1f4e0f1b449be8f097697b6937d2",
-    "event_stack/config.py": "2a0e5e3a1832b345ce727acd568bd2935361210d7082855bb232dd7a151b161a",
+    "event_stack/config.py": "e4a12922d6d82f4bde801d1102c627bed8bc5f9c4843f01150734f8b170ed5a1",
     "event_stack/context_features.py": "4eca09cadc3f165595fe506e9a3d50bf7f2976e6a26c63716b444859722d9b28",
     "event_stack/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "event_stack/eval/metrics.py": "fc0a0f4276049c39f5a2a09025f92b9a63067ef31ad07533ccd3eac69ea3f3aa",

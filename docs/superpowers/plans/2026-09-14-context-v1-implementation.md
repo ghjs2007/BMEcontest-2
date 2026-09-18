@@ -66,7 +66,7 @@ def test_context_v1_uses_same_session_clipped_real_time_regions():
 
 - [ ] **Step 2: Run the tests and verify RED**
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py -q`  
 Expected: collection fails because `src.pipeline.context_features` does not exist.
 
 - [ ] **Step 3: Implement the constants, region selection and 30-column per-scale builder**
@@ -114,7 +114,7 @@ fails for the missing behavior before implementing `_regions`, `_summaries`, `_c
 
 - [ ] **Step 5: Run focused tests and commit**
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py -q`  
 Expected: PASS.
 
 ```bash
@@ -161,7 +161,7 @@ def test_multiscale_context_v1_appends_ordered_block_and_preserves_nan():
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_event_stack.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_event_stack.py -q`  
 Expected: FAIL because the new keyword is unsupported.
 
 - [ ] **Step 3: Implement the opt-in append without touching the legacy path**
@@ -216,7 +216,7 @@ package, dist-runtime and old-bundle round-trip tests; unknown versions fail exp
 
 - [ ] **Step 6: Run integration tests and commit**
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py tests/pipeline/test_multiscale_runner.py tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py tests/pipeline/test_multiscale_runner.py tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q`  
 Expected: PASS.
 
 ```bash
@@ -293,12 +293,12 @@ that a changed replay metric or input fingerprint leaves the incumbent directory
 Run:
 
 ```bash
-D:/Anaconda3/envs/bme/python.exe scripts/bootstrap_event_stack_diagnostics.py --run-key 035644cf0889a5dd
+python scripts/bootstrap_event_stack_diagnostics.py --run-key 035644cf0889a5dd
 ```
 
 - [ ] **Step 5: Run tests and commit**
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py -q`  
 Expected: PASS.
 
 ```bash
@@ -361,7 +361,7 @@ each journal phase, registry write failure and post-copy manifest failure. Invok
 process for every interruption case and assert it reaches either the completely old or completely new
 verified release, never a mixed pair.
 
-Run: `D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q`  
+Run: `python -m pytest -p no:cacheprovider tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q`  
 Expected: PASS.
 
 ```bash
@@ -385,8 +385,8 @@ git commit -m "fix: gate releases against attested incumbent"
 - [ ] **Step 1: Run focused and complete verification before training**
 
 ```bash
-D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q
-D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider -q
+python -m pytest -p no:cacheprovider tests/pipeline/test_context_features.py tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py tests/pipeline/test_artifacts.py tests/pipeline/test_event_stack_dist.py -q
+python -m pytest -p no:cacheprovider -q
 ```
 
 Set `PYTHONDONTWRITEBYTECODE=1` and `LOKY_MAX_CPU_COUNT=16`. Expected: all tests pass, with only documented Windows symlink skips.
@@ -394,7 +394,7 @@ Set `PYTHONDONTWRITEBYTECODE=1` and `LOKY_MAX_CPU_COUNT=16`. Expected: all tests
 - [ ] **Step 2: Run one outer-fold smoke**
 
 ```bash
-D:/Anaconda3/envs/bme/python.exe scripts/crossfit_event_stack.py --fold 0 --inner-splits 4 --no-tcn --workers 1 --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80 --context-features v1
+python scripts/crossfit_event_stack.py --fold 0 --inner-splits 4 --no-tcn --workers 1 --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80 --context-features v1
 ```
 
 Verify the config hash is new, verifier width is 116, subject isolation assertions pass, diagnostics exist, and no `Inf` appears. This smoke is operational only; do not tune Context-v1 from its F1.
@@ -402,7 +402,7 @@ Verify the config hash is new, verifier width is 116, subject isolation assertio
 - [ ] **Step 3: Run the single registered five-fold experiment**
 
 ```bash
-D:/Anaconda3/envs/bme/python.exe scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 5 --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80 --context-features v1 --summary-alias outputs/crossfit/context_v1_summary.json
+python scripts/crossfit_event_stack.py --fold all --inner-splits 4 --no-tcn --workers 5 --micro-enabled --candidate-control-enabled --admission-minimum-recall 0.80 --context-features v1 --summary-alias outputs/crossfit/context_v1_summary.json
 ```
 
 Record aggregate F1/TP/pred/FP/PPV/recall, short-meal and candidate recall, fold scores, per-subject median/IQR/p10 and paired improved/unchanged/worsened counts, wall time and peak RSS.
@@ -414,7 +414,7 @@ If F1 is not strictly greater than the incumbent, delete only the exact Context-
 If F1 is greater, run the only incumbent-aware release entrypoint:
 
 ```bash
-D:/Anaconda3/envs/bme/python.exe scripts/release_event_stack.py --summary outputs/crossfit/context_v1_summary.json
+python scripts/release_event_stack.py --summary outputs/crossfit/context_v1_summary.json
 ```
 
 The command verifies the alias content and embedded experiment key against the content-addressed fold

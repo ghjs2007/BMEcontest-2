@@ -2,7 +2,7 @@
 """全局配置：路径与常量。所有模块从本文件取数。"""
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent          # D:\BMEtest
+ROOT_DIR = Path(__file__).resolve().parent.parent          # 仓库根（由本文件位置推导，无绝对路径）
 DATA_DIR = ROOT_DIR / "Data"
 SENSOR_DIR = DATA_DIR / "t_zsstnnrj_sensororiginaldata_system附件0826_1857"
 CACHE_DIR = ROOT_DIR / "cache"

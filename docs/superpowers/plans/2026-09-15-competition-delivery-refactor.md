@@ -58,7 +58,7 @@
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity/test_promoted_release_baseline.py -q
+Run: python -m pytest -p no:cacheprovider tests/parity/test_promoted_release_baseline.py -q
 
 Expected: FAIL because release-lock APIs do not exist.
 
@@ -77,7 +77,7 @@ Generate fixture hashes only from existing legal fixtures. Record source names a
 
 - [ ] **Step 4: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity/test_promoted_release_baseline.py tests/pipeline/test_artifacts.py tests/pipeline/test_release_event_stack.py -q
+Run: python -m pytest -p no:cacheprovider tests/parity/test_promoted_release_baseline.py tests/pipeline/test_artifacts.py tests/pipeline/test_release_event_stack.py -q
 
     git add src/pipeline/artifacts.py tests/fixtures/release_160afaf81debf1ee tests/parity/test_promoted_release_baseline.py
     git commit -m "test: lock promoted release refactor baseline"
@@ -106,7 +106,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_raw_session.py tests/unit/test_timeline.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_raw_session.py tests/unit/test_timeline.py -q
 
 - [ ] **Step 3: Move parser rules verbatim and implement timeline helpers.**
 
@@ -137,7 +137,7 @@ Also compare micro-cache fixture window IDs/bounds/labels/features exactly, excl
 
 - [ ] **Step 5: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_raw_session.py tests/unit/test_timeline.py tests/parity/test_raw_loader_parity.py tests/pipeline/test_micro_cache.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_raw_session.py tests/unit/test_timeline.py tests/parity/test_raw_loader_parity.py tests/pipeline/test_micro_cache.py -q
 
     git add src/pipeline/io src/pipeline/preprocessing src/data/loader.py src/pipeline/micro_cache.py tests/unit/test_raw_session.py tests/unit/test_timeline.py tests/parity/test_raw_loader_parity.py
     git commit -m "refactor: extract canonical raw session timeline"
@@ -181,7 +181,7 @@ Before extracting any macro code, add the legal source-session identifier, raw-s
 
 - [ ] **Step 2: Run RED and stop on unavailable evidence.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_macro_features.py tests/parity/test_feature_producer_parity.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_macro_features.py tests/parity/test_feature_producer_parity.py -q
 
 Expected: the new golden test fails before fixture registration. If the cache/slide golden record cannot be linked to legal raw source data, STOP this task, leave scripts/slide_features.py unchanged, and record the blocker in docs/repository_cleanup_audit.md; do not extract an inferred macro implementation.
 
@@ -219,7 +219,7 @@ The macro gate is three-way: legacy raw 62-D equals canonical raw 62-D; add_time
 
 - [ ] **Step 5: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_macro_features.py tests/pipeline/test_imu_features.py tests/pipeline/test_micro_cache.py tests/parity/test_feature_producer_parity.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_macro_features.py tests/pipeline/test_imu_features.py tests/pipeline/test_micro_cache.py tests/parity/test_feature_producer_parity.py -q
 
     git add src/pipeline/features src/pipeline/runner.py src/pipeline/imu_features.py src/pipeline/micro_cache.py tests/unit/test_macro_features.py tests/parity/test_feature_producer_parity.py
     git commit -m "refactor: canonicalize macro and micro feature producers"
@@ -265,7 +265,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_prediction_schema.py tests/integration/test_predictor_raw.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_prediction_schema.py tests/integration/test_predictor_raw.py -q
 
 - [ ] **Step 3: Implement canonical graph using existing algorithms only.**
 
@@ -285,7 +285,7 @@ Change scripts/predict_event_stack.py to parse INPUT, --bundle, --output, --subj
 
 - [ ] **Step 5: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/test_prediction_schema.py tests/integration/test_predictor_raw.py tests/pipeline/test_event_stack_dist.py -q
+Run: python -m pytest -p no:cacheprovider tests/unit/test_prediction_schema.py tests/integration/test_predictor_raw.py tests/pipeline/test_event_stack_dist.py -q
 
     git add src/pipeline/inference dist/schema/prediction.schema.json scripts/predict_event_stack.py tests/unit/test_prediction_schema.py tests/integration/test_predictor_raw.py
     git commit -m "feat: add raw event-stack predictor API"
@@ -314,7 +314,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/unit/t
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity/test_inference_four_way_parity.py -q
+Run: python -m pytest -p no:cacheprovider tests/parity/test_inference_four_way_parity.py -q
 
 - [ ] **Step 3: Implement trace-only observability.**
 
@@ -336,7 +336,7 @@ Values more than 1e-12 from decision thresholds must match; boundary cases recor
 
 - [ ] **Step 4: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity tests/integration/test_predictor_raw.py tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py -q
+Run: python -m pytest -p no:cacheprovider tests/parity tests/integration/test_predictor_raw.py tests/pipeline/test_event_stack.py tests/pipeline/test_runner.py -q
 
     git add src/pipeline/inference tests/parity tests/fixtures/release_160afaf81debf1ee
     git commit -m "test: add canonical inference parity coverage"
@@ -364,7 +364,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/parity
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_inference_clean_room.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_inference_clean_room.py -q
 
 - [ ] **Step 3: Implement deterministic staging and manifest.**
 
@@ -385,7 +385,7 @@ The clean-room test must create sentinel files/modules named src, cache, models 
 
 - [ ] **Step 4: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_inference_clean_room.py tests/pipeline/test_event_stack_dist.py tests/parity/test_inference_four_way_parity.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_inference_clean_room.py tests/pipeline/test_event_stack_dist.py tests/parity/test_inference_four_way_parity.py -q
 
     git add scripts/build_inference_distribution.py src/pipeline/artifacts.py dist/inference tests/release/test_inference_clean_room.py tests/pipeline/test_event_stack_dist.py
     git commit -m "build: create standalone inference distribution"
@@ -412,7 +412,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_visual_contract.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_visual_contract.py -q
 
 - [ ] **Step 3: Add schema, synthetic safe output and visual README.**
 
@@ -420,7 +420,7 @@ Document timeline keys timestamp_ms, macro_probability, micro_probability, valid
 
 - [ ] **Step 4: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_visual_contract.py tests/unit/test_prediction_schema.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_visual_contract.py tests/unit/test_prediction_schema.py -q
 
     git add dist/schema/prediction.schema.json dist/visual dist/examples/example_prediction.json dist/README.md tests/release/test_visual_contract.py
     git commit -m "docs: define visualization prediction schema"
@@ -460,7 +460,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_submission_clean_room.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_submission_clean_room.py -q
 
 - [ ] **Step 3: Implement build and raw verification mode.**
 
@@ -476,7 +476,7 @@ build_submission.py uses Task 6 staging/manifest routines, adds main.py, and ato
 
 - [ ] **Step 5: Verify and commit.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_submission_clean_room.py tests/release/test_inference_clean_room.py tests/parity/test_inference_four_way_parity.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_submission_clean_room.py tests/release/test_inference_clean_room.py tests/parity/test_inference_four_way_parity.py -q
 
     git add scripts/build_submission.py src/pipeline/inference/competition_adapter.py dist/submission tests/release/test_submission_clean_room.py tests/parity/test_inference_four_way_parity.py
     git commit -m "build: add competition submission bundle"
@@ -512,7 +512,7 @@ Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/releas
 
 - [ ] **Step 2: Run RED.**
 
-Run: D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider tests/release/test_repository_hygiene.py -q
+Run: python -m pytest -p no:cacheprovider tests/release/test_repository_hygiene.py -q
 
 - [ ] **Step 3: Add wrappers and rewrite docs before deletion.**
 
@@ -523,23 +523,23 @@ Root README covers task, frozen F1, leakage-safe CV, architecture, raw quick inf
 For every candidate from audit (rank_events*, old ranker/slide/FD scripts, one-off diagnostics, legacy dist/predict*.py, dist/models, dist/slide_models, dist/src), record:
 
     rg -n --glob '!tests/fixtures/deletion_manifest.json' '<filename-or-module-stem>' src scripts tests README.md docs dist release
-    D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider
+    python -m pytest -p no:cacheprovider
 
 For each candidate run distinct searches for imports, generic references, test references, README/docs reproduction commands, release/build commands and submission runtime closure. Set each of the six proof booleans only after the matching search is empty. If any check finds a consumer, change audit action to KEEP/REFACTOR; do not delete. Delete only entries whose required six booleans are present and false. Preserve model root, registry, attestation, canonical evidence and manifest-referenced cache.
 
 - [ ] **Step 5: Add ignore policy and clean rebuildable trash only.**
 
-Add __pycache__/, .pytest_cache/, *.pyc, cache/ssl_checkpoints/, cache/embeddings/, outputs/tmp/, outputs/experiments/, .release-staging-*/. Never ignore model/evidence/release roots. Before removal, resolve each path and prove it lies inside D:\BMEtest.
+Add __pycache__/, .pytest_cache/, *.pyc, cache/ssl_checkpoints/, cache/embeddings/, outputs/tmp/, outputs/experiments/, .release-staging-*/. Never ignore model/evidence/release roots. Before removal, resolve each path and prove it lies inside 仓库根.
 
 - [ ] **Step 6: Full verification and two commits.**
 
 Run:
 
     $env:PYTHONDONTWRITEBYTECODE='1'
-    D:/Anaconda3/envs/bme/python.exe scripts/reproduce_release.py --run-key 160afaf81debf1ee
-    D:/Anaconda3/envs/bme/python.exe scripts/build_inference_distribution.py
-    D:/Anaconda3/envs/bme/python.exe scripts/build_submission.py
-    D:/Anaconda3/envs/bme/python.exe -m pytest -p no:cacheprovider
+    python scripts/reproduce_release.py --run-key 160afaf81debf1ee
+    python scripts/build_inference_distribution.py
+    python scripts/build_submission.py
+    python -m pytest -p no:cacheprovider
     git status --short
 
 Expected: TP 114, FP 83, predictions 197, F1 0.6514285714285715; four-way parity, clean rooms, schema validation, manifests/attestation pass and no temporary cache remains.

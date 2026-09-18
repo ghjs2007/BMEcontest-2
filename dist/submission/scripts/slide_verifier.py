@@ -3,7 +3,7 @@
 
 复核器训练：meal_train（train 含餐会话全窗候选：真 = IoU≥0.25 匹配 eligible 餐，
 假 = 其余）；评估：val 全窗候选。
-用法：D:/Anaconda3/envs/bme/python.exe scripts/slide_verifier.py --fold 0
+用法：python scripts/slide_verifier.py --fold 0（仓库根、bme 环境）
 """
 import argparse
 import json
