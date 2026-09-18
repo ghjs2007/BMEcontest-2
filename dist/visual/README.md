@@ -17,8 +17,7 @@
 
 ```text
 dist/visual/
-├── index.html                 # 构建产物：浏览器入口（生成，勿手改）
-├── assets/                    # 构建产物：哈希化 JS/CSS（生成，勿手改）
+├── index.html                 # 构建产物：自包含单文件（生成，勿手改；双击即用）
 ├── runtime/
 │   └── release-metadata.json  # 生成：发布指标（来自 incumbent registry + crossfit summary）
 ├── README.md
@@ -26,6 +25,7 @@ dist/visual/
 ├── app/                       # 前端开发目录（Vite 根）
 │   ├── index.html             # Vite 源入口
 │   ├── package.json / package-lock.json / tsconfig.json / vite.config.ts
+│   ├── tools/e2e-smoke.mjs    # file:// 端到端冒烟（playwright-core + 系统 Edge/Chrome）
 │   └── src/
 │       ├── main.tsx  App.tsx               # 入口与顶层状态（单一播放时钟）
 │       ├── pages/                          # MonitorPage / EventsPage / ModelPage
@@ -36,11 +36,13 @@ dist/visual/
 │       ├── motion/                         # quaternion / coordinateFrame / orientation / interpolation
 │       ├── data/                           # types / prediction / telemetry / loader / format / demo
 │       ├── runtime/                        # inferenceClient / capabilities
+│       │                                   # + release-data.generated.ts（构建时生成，勿手改）
 │       ├── styles/app.css
 │       └── tests/                          # contract / timeline / orientation / loader
 └── tools/
-    ├── prepare-release.mjs                 # 生成 runtime/release-metadata.json（唯一来源）
-    ├── clean-build.mjs                     # 构建前清理旧 assets
+    ├── prepare-release.mjs                 # 生成 runtime/ JSON 与应用内联 TS（唯一来源）
+    ├── make-standalone.mjs                 # 构建后内联为自包含单文件 index.html
+    ├── clean-build.mjs                     # 构建前清理旧产物
     └── export-motion.mjs                   # 独立 CLI：TXT → motion.json + motion.bin
 ```
 
@@ -50,12 +52,14 @@ dist/visual/
 cd dist/visual/app
 npm ci            # 或 npm install
 npm run dev       # 开发预览：http://127.0.0.1:5173/
-npm test          # vitest
-npm run build     # 生产构建 → dist/visual/index.html + assets/
+npm test          # vitest（16 项）
+npm run build     # 生产构建 → dist/visual/index.html（自包含单文件）
+npm run e2e       # file:// 端到端冒烟（需系统 Edge 或 Chrome）
 ```
 
-构建后的页面可直接双击打开演示数据；浏览器本地文件策略可能阻止读取发布指标，
-此时用任意静态服务器托管仓库根目录即可。
+**双击 `dist/visual/index.html` 即可运行**：生产构建是自包含单文件（IIFE 内联脚本 +
+内联样式，零外部资源、零 fetch、零后端），演示模式与"打开已有预测"在任意机器上
+直接可用；发布指标在建时由 `tools/prepare-release.mjs` 内联，无需网络。
 
 ## 竞赛启动器
 
@@ -75,9 +79,11 @@ npm run build     # 生产构建 → dist/visual/index.html + assets/
 
 ## 生产构建
 
-`npm run build` = `prepare-release` + `clean-build` + `tsc --noEmit` + `vite build`。
-Vite 根为 `app/`，输出回写到发行根（`../index.html`、`../assets/`），因此构建产物与
-前端源码分离、互不覆盖。运行已构建页面不需要 Node。
+`npm run build` = `prepare-release`（生成发布指标 JSON 与内联 TS 模块）+ `clean-build`
++ `tsc --noEmit` + `vite build`（IIFE 输出）+ `tools/make-standalone.mjs`（把 JS/CSS
+内联为单文件、脚本置于 `</body>` 前保证在 DOM 就绪后执行）。Vite 根为 `app/`，
+输出回写到发行根 `../index.html`；构建产物与前端源码分离、互不覆盖。
+运行已构建页面不需要 Node、不需要 Python。
 
 ## 演示模式
 
@@ -154,7 +160,7 @@ Python 侧桥接测试：`python -m pytest tests/integration/test_local_server.p
 
 ```bash
 cd dist/visual/app
-npm ci && npm test && npm run build
-# 打开 dist/visual/index.html（或托管仓库根目录）验证演示模式
+npm ci && npm test && npm run build && npm run e2e   # e2e 直接以 file:// 打开构建产物
+# 双击 dist/visual/index.html 验证零依赖演示模式
 dist\start.bat   # 验证完整分析模式：选择单个 TXT / 多个 TXT / 文件夹
 ```

@@ -8,7 +8,7 @@ dist/
 ├── inference/      # canonical 独立推理包（生成物）：原始 collect_data*.txt → 预测 JSON；
 │                   # 附 serve.py 本地推理桥（可视化同源调用）
 ├── visual/         # 团队可视化应用（React+TS+Vite）：源码在 visual/app/，
-│                   # 构建产物 index.html/assets/runtime 在根；演示模式无需后端
+│                   # 生产构建为自包含单文件 index.html（双击即用，无任何依赖）
 ├── submission/     # 竞赛最终提交包（生成物）：推理接口 + 完整模型证据链 + 复现代码 + 可视化
 ├── examples/       # 合成安全示例 example_prediction.json（符合 schema，无真实数据）
 ├── schema/         # 稳定契约 prediction.schema.json（v1.0）

@@ -10,6 +10,9 @@ export type Capabilities = {
  * `{ inference: false }` instead of throwing.
  */
 export async function probeCapabilities(timeoutMs = 1500): Promise<Capabilities> {
+  // Under file:// no fetch is permitted (CORS), so the bridge is known to be absent;
+  // short-circuit instead of provoking a console error.
+  if (typeof location !== 'undefined' && location.protocol === 'file:') return { inference: false };
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
