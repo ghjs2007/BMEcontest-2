@@ -28,17 +28,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.build_inference_distribution import build_distribution  # noqa: E402
+from scripts.build_inference_distribution import _SERVE_ENTRYPOINT, build_distribution  # noqa: E402
 from src.pipeline.artifacts import load_current_promoted_release  # noqa: E402
 
 
 _SUBMISSION_CLOSURE_ROOTS = (
     "src.pipeline.inference.predictor",
     "src.pipeline.inference.competition_adapter",
+    "src.pipeline.inference.local_server",
 )
 
 _SUBMISSION_REQUIRED_ROOTS = (
     "event_stack", "models", "src", "scripts", "tests", "visual", "schema", "examples",
+    "start.bat",
 )
 
 _MAIN_ENTRYPOINT = '''"""竞赛提交入口：冻结 event-stack 发布的完整推理接口。
@@ -119,22 +121,40 @@ _SUBMISSION_README = """# 竞赛提交包（event-stack）
 本目录由 `python scripts/build_submission.py` 从仓库唯一真源确定性生成。
 请勿手工修改任何生成文件；需要变更时重建整个包。
 
+## 两种打开方式（先看这里）
+
+**方式一 · 离线查看（零依赖，任何机器）**：双击 `visual/index.html`。
+自包含单文件网页（无需 Node / Python / 网络），内置演示数据，并可用
+"Open existing prediction" 加载已有的 `prediction.json`（可附带 `motion.json` +
+`motion.bin`）查看事件、时间轴、原始 IMU 与三维动作回放。本包内
+`models/event_stack/<run_key>/deployment` 之外不含任何真实受试者数据，演示页同样
+只使用合成数据。
+
+**方式二 · 完整分析（本地 canonical 推理）**：双击 `start.bat`。
+启动本地推理服务（仅绑定 127.0.0.1）并自动打开浏览器；在页面中选择
+`collect_data*.txt` 文件或所在文件夹，即可由本包的 canonical Predictor 完成推理，
+返回预测契约与运动遥测（浏览器不做任何特征/阈值/解码计算）。若缺少 Python 依赖，
+`start.bat` 会询问后自动执行 `pip install -r requirements.txt`（不静默安装），
+Python 缺失 / 安装失败 / 端口占用都会给出明确提示。
+
 ## 包结构
 
 ```text
 dist/submission/
-├── main.py                        # 竞赛入口：--raw 模式 + 官方 adapter 边界
-├── event_stack/                   # 推理运行时（canonical 源机械 vendored；main.py 使用）
+├── start.bat                      # 一键启动器：本地推理服务 + 浏览器（方式二）
+├── serve.py                       # 本地推理桥（/api/health、/api/upload、/api/analyze）
+├── main.py                        # 命令行入口：--raw 模式 + 官方 adapter 边界
+├── event_stack/                   # 推理运行时（canonical 源机械 vendored）
 ├── models/
 │   └── event_stack/<run_key>/
 │       ├── deployment/            # 冻结推理模型（macro/micro/verifier + policy）
 │       ├── outer-fold-0..4/       # 五折 outer-fold evidence bundle
 │       ├── promotion_summary.json
 │       └── promotion_attestation.json
+├── visual/                        # 可视化应用（自包含单文件 index.html + 前端源码）
 ├── src/                           # canonical 算法源码（复现与审阅用）
 ├── scripts/                       # 训练/评估/发布/构建全链脚本
 ├── tests/                         # 单元/集成/parity/release 测试
-├── visual/                        # 可视化应用（dist/visual 工作区原样打包）
 ├── schema/                        # prediction.schema.json（预测契约 v1.0）
 ├── examples/                      # example_prediction.json（合成安全示例）
 ├── feature_schema.json            # 特征 schema v2（macro 63 / micro 47 / verifier 116）
@@ -143,7 +163,7 @@ dist/submission/
 └── README.md
 ```
 
-## 快速开始（推理）
+## 命令行推理（绕过界面直接调用）
 
 ```bash
 python -m pip install -r requirements.txt
@@ -153,18 +173,23 @@ python main.py --raw path/to/subject-folder --output result.json --include-timel
 
 ## 可用接口
 
-1. **命令行（本包）**：`main.py --raw INPUT --output OUTPUT [--include-timeline]
+1. **一键可视化（推荐）**：`start.bat` —— 本地推理服务 + 浏览器界面（见"两种打开方式"）。
+2. **本地 HTTP 桥**：`python serve.py [--port 4173] [--visual-dir visual]` ——
+   接口：`GET /api/health`、`GET /api/capabilities`、`POST /api/upload`、
+   `POST /api/analyze`、`GET /api/artifacts/<id>/<n>/motion.bin`，并同源托管
+   `visual/` 静态页面。仅绑定 127.0.0.1。
+3. **命令行（本包）**：`main.py --raw INPUT --output OUTPUT [--include-timeline]
    [--include-candidates] [--device cpu]`；输出为 `schema/prediction.schema.json`
    （v1.0）定义的预测文档（events / 可选 timeline、candidates、gaps）。
-2. **Python API（本包）**：
+4. **Python API（本包）**：
    ```python
    from event_stack.inference import Predictor
    predictor = Predictor.from_bundle("models/event_stack/<run_key>/deployment",
                                      run_key="<run_key>")
    result = predictor.predict_file("path/to/collect_data1_2_3.txt")
    ```
-3. **可视化**：`visual/` 是团队可视化应用；它只消费预测 JSON（见
-   `visual/README.md` 与 `schema/`、`examples/`），不重实现任何算法决策。
+5. **可视化**：`visual/` 是团队可视化应用（用法见 `visual/README.md`）；它只消费
+   预测 JSON 与运动遥测（见 `schema/`、`examples/`），不重实现任何算法决策。
 
 ## 官方竞赛模式（已知约束）
 
@@ -208,6 +233,7 @@ def _extra_trees(root: Path) -> tuple[tuple[Path, str], ...]:
         (root / "dist" / "visual", "visual"),
         (root / "dist" / "schema", "schema"),
         (root / "dist" / "examples", "examples"),
+        (root / "dist" / "start.bat", "start.bat"),
     ]
     missing = [str(source) for source, _ in trees if not (root / source).exists()]
     if missing:
@@ -229,6 +255,7 @@ def build_submission(*, repository_root: Path, destination: Path,
         closure_roots=_SUBMISSION_CLOSURE_ROOTS,
         models_source=root / "models" / "event_stack" / run_key,
         models_destination=f"models/event_stack/{run_key}",
+        extra_entrypoints=(("serve.py", _SERVE_ENTRYPOINT),),
         extra_trees=_extra_trees(root),
         required_roots=_SUBMISSION_REQUIRED_ROOTS,
     )

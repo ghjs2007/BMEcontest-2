@@ -112,7 +112,7 @@
     "models/verifier_logistic.joblib": "614af1d790757cbbf8878c2b0ffee7aca933f3831ae976c400b9be0d66a64140",
     "predict.py": "273f7c464496919555ef21d81f73f46109a487392882d68428680b93ca0df4da",
     "requirements.txt": "8997d24ed8b11e729529156f4877e068ea0068659dec3aa88034c76a11baf56a",
-    "serve.py": "a76fee6773d8b95d1060f3ad3ad8daae44d3e72096e1684473d29a0bab882057"
+    "serve.py": "1305a69dea3b4f07bcbb2a8fea38d067006a0ac87e1df5211a980495022604bd"
   },
   "model_files": [
     "models/feature_schema.json",

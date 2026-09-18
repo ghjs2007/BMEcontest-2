@@ -50,8 +50,8 @@ def test_submission_packages_the_full_delivery(tmp_path: Path):
     from scripts.build_submission import build_submission
 
     package = build_submission(repository_root=ROOT, destination=tmp_path / "built" / "submission")
-    for component in ("main.py", "event_stack", "models", "src", "scripts", "tests",
-                      "visual", "schema", "examples", "manifest.json", "requirements.txt", "README.md"):
+    for component in ("start.bat", "serve.py", "main.py", "event_stack", "models", "src", "scripts",
+                      "tests", "visual", "schema", "examples", "manifest.json", "requirements.txt", "README.md"):
         assert (package / component).exists(), f"submission is missing {component}"
     assert not (package / "docs").exists(), "documentation must not ship inside the submission"
     model_root = package / "models" / "event_stack" / "160afaf81debf1ee"
@@ -109,6 +109,46 @@ def test_submission_raw_mode_matches_predictor(tmp_path: Path):
         options=PredictionOptions(include_timeline=True, include_candidates=True),
     )
     assert result == expected
+
+
+def test_submission_serves_standalone_from_its_own_tree(tmp_path: Path):
+    """serve.py alone must resolve the nested bundle + visual/ and answer the API.
+
+    This is the launcher path: dist/submission copied anywhere must open the
+    visualization and run canonical inference without the surrounding repository.
+    """
+    import re
+    import time
+    import urllib.request
+
+    from scripts.build_submission import build_submission
+
+    package = build_submission(repository_root=ROOT, destination=tmp_path / "built" / "submission")
+    process = subprocess.Popen(
+        [sys.executable, "-I", "serve.py", "--port", "0"], cwd=package,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        port = None
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            line = process.stdout.readline()
+            if not line:
+                break
+            match = re.search(r"http://127\.0\.0\.1:(\d+)/", line)
+            if match:
+                port = int(match.group(1))
+                break
+        assert port, "serve.py did not report a bound port: " + (process.stderr.read() or "")
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=30) as response:
+            health = json.loads(response.read().decode("utf-8"))
+        assert health["status"] == "ok" and health["run_key"] == "160afaf81debf1ee"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=30) as response:
+            page = response.read().decode("utf-8")
+        assert "EatingSense" in page and 'type="module"' not in page
+    finally:
+        process.kill()
+        process.wait(timeout=30)
 
 
 def test_submission_official_mode_refuses_without_registered_adapter(tmp_path: Path):
