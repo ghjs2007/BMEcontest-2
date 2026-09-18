@@ -453,7 +453,7 @@ def _copy_file(source: Path, target: Path) -> None:
     shutil.copy2(source, target)
 
 
-def _copy_tree(source: Path, target: Path) -> None:
+def _copy_tree(source: Path, target: Path, *, extra_ignore: Sequence[str] = ()) -> None:
     """Copy a file or directory into the staging tree without bytecode."""
     source = Path(source)
     target = Path(target)
@@ -463,7 +463,8 @@ def _copy_tree(source: Path, target: Path) -> None:
         return
     shutil.copytree(source, target, symlinks=False, copy_function=_copy_file,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
-                                                  "node_modules", ".vite", "coverage"))
+                                                  "node_modules", ".vite", "coverage",
+                                                  *extra_ignore))
 
 
 def build_distribution(*, repository_root: Path, bundle_path: Path, destination: Path,
@@ -497,8 +498,8 @@ def build_distribution(*, repository_root: Path, bundle_path: Path, destination:
         staging.mkdir()
         copy_canonical_runtime_source(root, staging / "event_stack", roots=closure_roots)
         _copy_tree(models_source if models_source is not None else bundle, staging / models_destination)
-        for source, relative in extra_trees:
-            _copy_tree(source, staging / relative)
+        for source, relative, *ignore in extra_trees:
+            _copy_tree(source, staging / relative, extra_ignore=ignore[0] if ignore else ())
         (staging / entrypoint).write_text(entrypoint_text, encoding="utf-8", newline="\n")
         for extra_name, extra_text in extra_entrypoints:
             (staging / extra_name).write_text(extra_text, encoding="utf-8", newline="\n")

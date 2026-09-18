@@ -225,17 +225,18 @@ numpy、joblib、scikit-learn、lightgbm。支持 `--device cpu`；`--device gpu
 """
 
 
-def _extra_trees(root: Path) -> tuple[tuple[Path, str], ...]:
-    trees: list[tuple[Path, str]] = [
+def _extra_trees(root: Path) -> tuple[tuple, ...]:
+    trees: list[tuple] = [
         (root / "src", "src"),
-        (root / "scripts", "scripts"),
+        # 报告生成工具依赖 python-docx/matplotlib，不属于推理/复现链，随仓库维护。
+        (root / "scripts", "scripts", ("report",)),
         (root / "tests", "tests"),
         (root / "dist" / "visual", "visual"),
         (root / "dist" / "schema", "schema"),
         (root / "dist" / "examples", "examples"),
         (root / "dist" / "start.bat", "start.bat"),
     ]
-    missing = [str(source) for source, _ in trees if not (root / source).exists()]
+    missing = [str(source) for source, *_ in trees if not (root / source).exists()]
     if missing:
         raise ValueError("submission source tree is missing: " + ", ".join(missing))
     return tuple(trees)

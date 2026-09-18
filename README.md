@@ -154,6 +154,10 @@ python scripts/train_event_stack.py --summary outputs/crossfit/context_v1_summar
 # 重建分发包（从 canonical 源生成，勿手改 dist/）
 python scripts/build_inference_distribution.py
 python scripts/build_submission.py
+
+# 生成参赛作品报告（输出至 Archieves/；截图链路需 Node + 本机 Edge/Chrome）
+node dist/visual/app/tools/capture-report-shots.mjs   # 界面截图（仅合成演示数据）
+python scripts/report/build_report.py                 # 报告 docx
 ```
 
 历史实验脚本（时间轴修复前的滑窗/对照系统开发命令）已按 §10 清理，均可从 git 历史
@@ -194,6 +198,7 @@ BMEcontest-2/
 │   ├── rank_events.py                    # 历史对照系统（依赖闭包保留）
 │   ├── rank_events_v2.py                 # 历史对照系统（依赖闭包保留）
 │   ├── release_event_stack.py            # 发布事务（原子替换）
+│   ├── report/                           # 竞赛报告生成（build_report.py + 界面截图链路）
 │   ├── reproduce_release.py              # 免训练验证发布链
 │   ├── slide_features.py                 # 历史 macro 生产器（fixture 锚定）
 │   ├── slide_verifier.py                 # 历史滑窗管线（parity 锚定）
