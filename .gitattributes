@@ -1,3 +1,5 @@
 * text=auto eol=lf
 models/event_stack/** -text
 dist/event_stack/** -text
+# .bat 需要保持 CRLF 字节（批处理对行尾敏感）；禁止 Git 归一化
+*.bat -text
